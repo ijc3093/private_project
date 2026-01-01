@@ -1,1 +1,3 @@
-# private_project
+Username : admin
+
+Password :test
