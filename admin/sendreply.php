@@ -27,8 +27,11 @@ if ($me === '' || !$role) {
 }
 
 // -----------------------------
-// TARGET (reply=...)
-// - can be user email (public user) OR admin email OR admin username
+// TARGET
+// reply=... can be:
+// - public user email (Admin only)
+// - admin email
+// - admin username
 // -----------------------------
 $replyTo = trim(urldecode($_GET['reply'] ?? ''));
 if ($replyTo === '') die("Missing reply target.");
@@ -46,26 +49,21 @@ function safe_text($txt) {
 }
 
 /**
- * Find admin account by username OR email (fixed placeholders)
+ * Find admin account by username OR email
  */
 function getAdminByUsernameOrEmail(PDO $dbh, string $value) {
     $st = $dbh->prepare("
         SELECT idadmin, username, email, role, status
         FROM admin
-        WHERE username = :u OR email = :e
+        WHERE username = ? OR email = ?
         LIMIT 1
     ");
-    $st->execute([
-        ':u' => $value,
-        ':e' => $value
-    ]);
+    $st->execute([$value, $value]);
     return $st->fetch(PDO::FETCH_ASSOC);
 }
 
-
 /**
- * Return the admin "receiver key" we should use for INTERNAL notifications.
- * We decided: internal notifications use username.
+ * Internal notifications (use username as receiver key)
  */
 function notifyInternal(PDO $dbh, string $fromUsername, string $toUsername) {
     $st = $dbh->prepare("
@@ -79,66 +77,56 @@ function notifyInternal(PDO $dbh, string $fromUsername, string $toUsername) {
 }
 
 // -----------------------------
-// Decide MODE:
-// A) user_admin (Admin <-> Public User email)  [only when replyTo is NOT an admin email]
-// B) internal chat (Admin/Manager/Staff)       [replyTo is admin username OR admin email]
+// DETERMINE MODE (user_admin vs internal)
 // -----------------------------
-$channel  = '';
-$mySender = '';     // stored in feedback.sender
-$peerKey  = '';     // stored in feedback.receiver (for internal) OR user email (for user_admin)
-$peerShow = $replyTo;
+$channel   = '';
+$mySender  = '';
+$peerKey   = '';   // for internal: peer username, for user_admin: user email
+$peerShow  = $replyTo; // shows in UI (what you typed / selected)
 
+// If replyTo is an email, it might be an admin email OR a public user email
 $adminRow = null;
 if ($isEmailTarget) {
-    // If this email belongs to an admin account => treat as INTERNAL chat
-    $adminRow = getAdminByUsernameOrEmail($dbh, $replyTo);
+    $adminRow = getAdminByUsernameOrEmail($dbh, $replyTo); // returns admin row if email belongs to admin
 }
 
-// CASE 1: Admin <-> Public User (email)
-// Only when:
-// - you are Admin
-// - replyTo is an email
-// - that email is NOT an admin email
 if ($role === 1 && $isEmailTarget && !$adminRow) {
+    // ✅ Admin chatting with PUBLIC USER email
     $channel  = 'user_admin';
-    $mySender = 'Admin';
-    $peerKey  = $replyTo; // user email
-}
-// CASE 2: Internal chat (Admin/Manager/Staff)
-// - replyTo can be username OR admin email
-else {
-    // block manager/staff from public user email threads
-    if ($isEmailTarget && !$adminRow) {
-        die("Managers/Staff cannot access user chats.");
+    $mySender = 'Admin';     // compatibility with existing user-side code
+    $peerKey  = $replyTo;    // user email
+} else {
+    // ✅ INTERNAL chat (admin/manager/staff) by username OR admin email
+    $peerRow = getAdminByUsernameOrEmail($dbh, $replyTo);
+    if (!$peerRow) {
+        // If it's an email but NOT admin email => it's a public user email (blocked for non-admin)
+        if ($isEmailTarget && $role !== 1) {
+            die("Managers/Staff cannot access public user chats.");
+        }
+        die("Invalid recipient.");
     }
 
-    // normalize internal target to admin username
-    if ($adminRow) {
-        $peerUsername = $adminRow['username'];
-        $peerRole     = (int)$adminRow['role'];
-    } else {
-        // replyTo is username
-        $adminRow2 = getAdminByUsernameOrEmail($dbh, $replyTo);
-        if (!$adminRow2) die("Invalid username/email target.");
-        $peerUsername = $adminRow2['username'];
-        $peerRole     = (int)$adminRow2['role'];
-    }
+    if ((int)$peerRow['status'] !== 1) die("Recipient is inactive.");
 
-    // ✅ allow Admin<->Manager and Admin<->Staff
-    $isAdminToManager = ($role === 1 && $peerRole === 2) || ($role === 2 && $peerRole === 1);
-    $isAdminToStaff   = ($role === 1 && $peerRole === 4) || ($role === 4 && $peerRole === 1);
+    $peerRole = (int)$peerRow['role'];
+    $peerUser = $peerRow['username']; // normalized username
 
-    if ($isAdminToManager) {
-        $channel = 'admin_manager';
-    } elseif ($isAdminToStaff) {
-        $channel = 'admin_staff';
-    } else {
-        die("This chat pair is not allowed.");
-    }
+    // Role-pair -> channel
+    if ($role === 1 && $peerRole === 1) $channel = 'admin_admin';
+    elseif ($role === 2 && $peerRole === 2) $channel = 'manager_manager';
+    elseif ($role === 4 && $peerRole === 4) $channel = 'staff_staff';
 
-    $mySender = $me;           // my username
-    $peerKey  = $peerUsername; // peer username
-    $peerShow = $peerUsername;
+    elseif (($role === 1 && $peerRole === 2) || ($role === 2 && $peerRole === 1)) $channel = 'admin_manager';
+    elseif (($role === 1 && $peerRole === 4) || ($role === 4 && $peerRole === 1)) $channel = 'admin_staff';
+
+    // OPTIONAL: Manager <-> Staff
+    // elseif (($role === 2 && $peerRole === 4) || ($role === 4 && $peerRole === 2)) $channel = 'manager_staff';
+
+    else die("This chat pair is not allowed.");
+
+    $mySender = $me;       // username identity
+    $peerKey  = $peerUser; // peer username for internal chat
+    $peerShow = $replyTo;  // could be email or username; display what user chose
 }
 
 // -----------------------------
@@ -146,7 +134,7 @@ else {
 // -----------------------------
 try {
     if ($channel === 'user_admin') {
-        // user -> Admin inbox
+        // user -> Admin shared inbox
         $mk = $dbh->prepare("
             UPDATE feedback
             SET is_read = 1, read_at = NOW()
@@ -166,7 +154,11 @@ try {
               AND channel = :ch
               AND is_read = 0
         ");
-        $mk->execute([':peer' => $peerKey, ':me' => $me, ':ch' => $channel]);
+        $mk->execute([
+            ':peer' => $peerKey,
+            ':me'   => $me,
+            ':ch'   => $channel
+        ]);
     }
 } catch (Throwable $e) {
     // ignore
@@ -236,7 +228,7 @@ if (isset($_POST['send'])) {
                     VALUES (:sender, :receiver, :ch, 'Chat', :data, :attachment, 0)
                 ");
                 $stmt->execute([
-                    ':sender'     => $mySender,
+                    ':sender'     => $me,
                     ':receiver'   => $peerKey,
                     ':ch'         => $channel,
                     ':data'       => $text,
@@ -244,7 +236,7 @@ if (isset($_POST['send'])) {
                 ]);
 
                 // notify peer username
-                notifyInternal($dbh, $mySender, $peerKey);
+                notifyInternal($dbh, $me, $peerKey);
             }
 
             header("Location: sendreply.php?reply=" . urlencode($peerShow));
@@ -363,7 +355,7 @@ try {
     <?php else: ?>
       <?php foreach ($rows as $r): ?>
         <?php
-          // Blue = sender (me/right). Grey = receiver (peer/left)
+          // Blue = me (right). Grey = peer (left)
           $isMe = (strcasecmp($r['sender'], $mySender) === 0);
           $rowClass  = $isMe ? 'row-right' : 'row-left';
           $bubbleCls = $isMe ? 'bubble bubble-me' : 'bubble';

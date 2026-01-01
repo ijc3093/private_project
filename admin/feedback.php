@@ -1,4 +1,6 @@
 <?php
+// /Business_only3/admin/feedback.php
+
 require_once __DIR__ . '/includes/session_admin.php';
 requireAdminLogin();
 
@@ -17,21 +19,25 @@ $error = '';
 $filter = strtolower(trim($_GET['filter'] ?? 'all')); // all | unread | read
 $filter = in_array($filter, ['all','unread','read'], true) ? $filter : 'all';
 
-$me = myUsername();
-$adminMode = isAdmin();
+$me = myUsername();            // username from session
+$role = myRoleId();            // 1 Admin, 2 Manager, 3 Gospel, 4 Staff
+$adminMode = isAdmin();        // admin role?
 
 if ($me === '') die("Session missing username.");
 
 function fmt_dt($dt) {
     return $dt ? date('M d, Y h:i A', strtotime($dt)) : '';
 }
-
 function isEmail($s): bool {
     return (strpos($s, '@') !== false);
 }
 
-// internal channels (Option B)
-$internalChannels = ['admin_manager','admin_staff','manager_staff'];
+/**
+ * Internal channels I am allowed to see.
+ * Must be defined in identity.php.
+ */
+$internalChannels = allowedInternalChannelsForMe();
+if (!is_array($internalChannels)) $internalChannels = [];
 
 // -----------------------------
 // WHERE for filter
@@ -46,6 +52,7 @@ if ($filter === 'read')   $readWhere = " AND f.is_read = 1 ";
 if (isset($_POST['mark_all_read'])) {
     try {
         if ($adminMode) {
+            // mark user->Admin inbox as read
             $mk = $dbh->prepare("
                 UPDATE feedback
                 SET is_read = 1, read_at = NOW()
@@ -54,16 +61,31 @@ if (isset($_POST['mark_all_read'])) {
                   AND is_read = 0
             ");
             $mk->execute();
+
+            // mark internal messages TO this admin username as read too
+            if (!empty($internalChannels)) {
+                $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+                $mk2 = $dbh->prepare("
+                    UPDATE feedback
+                    SET is_read = 1, read_at = NOW()
+                    WHERE receiver = ?
+                      AND channel IN ($ph)
+                      AND is_read = 0
+                ");
+                $mk2->execute(array_merge([$me], $internalChannels));
+            }
         } else {
-            $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-            $mk = $dbh->prepare("
-                UPDATE feedback
-                SET is_read = 1, read_at = NOW()
-                WHERE receiver = ?
-                  AND channel IN ($ph)
-                  AND is_read = 0
-            ");
-            $mk->execute(array_merge([$me], $internalChannels));
+            if (!empty($internalChannels)) {
+                $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+                $mk = $dbh->prepare("
+                    UPDATE feedback
+                    SET is_read = 1, read_at = NOW()
+                    WHERE receiver = ?
+                      AND channel IN ($ph)
+                      AND is_read = 0
+                ");
+                $mk->execute(array_merge([$me], $internalChannels));
+            }
         }
 
         header("Location: feedback.php?filter=" . urlencode($filter) . "&msg=allread");
@@ -75,18 +97,16 @@ if (isset($_POST['mark_all_read'])) {
 
 // -----------------------------
 // ACTION: MARK ONE THREAD READ
+// mark = peer identifier shown in table
+// - if peer contains @ => user email (admin only)
+// - else => internal username (all roles)
 // -----------------------------
 if (isset($_GET['mark']) && $_GET['mark'] !== '') {
     $peer = trim($_GET['mark']);
 
     try {
-        if ($adminMode) {
-            // peer is USER email
-            if (!isEmail($peer)) {
-                header("Location: feedback.php?filter=" . urlencode($filter));
-                exit;
-            }
-
+        if ($adminMode && isEmail($peer)) {
+            // mark user thread read (user -> Admin)
             $mk = $dbh->prepare("
                 UPDATE feedback
                 SET is_read = 1, read_at = NOW()
@@ -96,24 +116,26 @@ if (isset($_GET['mark']) && $_GET['mark'] !== '') {
                   AND is_read = 0
             ");
             $mk->execute([':peer' => $peer]);
-
         } else {
-            // peer is username (Admin/Staff/Manager)
+            // internal thread read: peer is username
             if (isEmail($peer)) {
+                // non-admin cannot mark user-email chats
                 header("Location: feedback.php?filter=" . urlencode($filter));
                 exit;
             }
 
-            $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-            $mk = $dbh->prepare("
-                UPDATE feedback
-                SET is_read = 1, read_at = NOW()
-                WHERE receiver = ?
-                  AND channel IN ($ph)
-                  AND sender = ?
-                  AND is_read = 0
-            ");
-            $mk->execute(array_merge([$me], $internalChannels, [$peer]));
+            if (!empty($internalChannels)) {
+                $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+                $mk = $dbh->prepare("
+                    UPDATE feedback
+                    SET is_read = 1, read_at = NOW()
+                    WHERE receiver = ?
+                      AND channel IN ($ph)
+                      AND sender = ?
+                      AND is_read = 0
+                ");
+                $mk->execute(array_merge([$me], $internalChannels, [$peer]));
+            }
         }
 
         header("Location: feedback.php?filter=" . urlencode($filter) . "&msg=threadread");
@@ -126,18 +148,14 @@ if (isset($_GET['mark']) && $_GET['mark'] !== '') {
 
 // -----------------------------
 // ACTION: DELETE ONE THREAD
+// del = peer identifier
 // -----------------------------
 if (isset($_GET['del']) && $_GET['del'] !== '') {
     $peer = trim($_GET['del']);
 
     try {
-        if ($adminMode) {
-            // delete user thread (both directions)
-            if (!isEmail($peer)) {
-                header("Location: feedback.php?filter=" . urlencode($filter));
-                exit;
-            }
-
+        if ($adminMode && isEmail($peer)) {
+            // delete user thread both directions
             $del = $dbh->prepare("
                 DELETE FROM feedback
                 WHERE channel = 'user_admin'
@@ -147,7 +165,6 @@ if (isset($_GET['del']) && $_GET['del'] !== '') {
                   )
             ");
             $del->execute([':peer' => $peer, ':peer2' => $peer]);
-
         } else {
             // delete internal thread both directions
             if (isEmail($peer)) {
@@ -155,17 +172,18 @@ if (isset($_GET['del']) && $_GET['del'] !== '') {
                 exit;
             }
 
-            $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-            $del = $dbh->prepare("
-                DELETE FROM feedback
-                WHERE channel IN ($ph)
-                  AND (
-                        (sender = ? AND receiver = ?)
-                     OR (sender = ? AND receiver = ?)
-                  )
-            ");
-            // (me->peer) OR (peer->me)
-            $del->execute(array_merge($internalChannels, [$me, $peer, $peer, $me]));
+            if (!empty($internalChannels)) {
+                $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+                $del = $dbh->prepare("
+                    DELETE FROM feedback
+                    WHERE channel IN ($ph)
+                      AND (
+                            (sender = ? AND receiver = ?)
+                         OR (sender = ? AND receiver = ?)
+                      )
+                ");
+                $del->execute(array_merge($internalChannels, [$me, $peer, $peer, $me]));
+            }
         }
 
         header("Location: feedback.php?filter=" . urlencode($filter) . "&msg=deleted");
@@ -182,16 +200,30 @@ if (isset($_GET['del']) && $_GET['del'] !== '') {
 if (isset($_POST['delete_all'])) {
     try {
         if ($adminMode) {
+            // delete user->Admin inbox
             $del = $dbh->prepare("DELETE FROM feedback WHERE receiver='Admin' AND channel='user_admin'");
             $del->execute();
+
+            // delete internal messages TO me
+            if (!empty($internalChannels)) {
+                $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+                $del2 = $dbh->prepare("
+                    DELETE FROM feedback
+                    WHERE receiver = ?
+                      AND channel IN ($ph)
+                ");
+                $del2->execute(array_merge([$me], $internalChannels));
+            }
         } else {
-            $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-            $del = $dbh->prepare("
-                DELETE FROM feedback
-                WHERE receiver = ?
-                  AND channel IN ($ph)
-            ");
-            $del->execute(array_merge([$me], $internalChannels));
+            if (!empty($internalChannels)) {
+                $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+                $del = $dbh->prepare("
+                    DELETE FROM feedback
+                    WHERE receiver = ?
+                      AND channel IN ($ph)
+                ");
+                $del->execute(array_merge([$me], $internalChannels));
+            }
         }
 
         header("Location: feedback.php?filter=" . urlencode($filter) . "&msg=deletedall");
@@ -205,20 +237,23 @@ if (isset($_POST['delete_all'])) {
 // -----------------------------
 // UI messages
 // -----------------------------
-if (($_GET['msg'] ?? '') === 'allread')    $msg = "All messages marked as read.";
-if (($_GET['msg'] ?? '') === 'threadread') $msg = "Thread marked as read.";
-if (($_GET['msg'] ?? '') === 'deleted')    $msg = "Thread deleted.";
-if (($_GET['msg'] ?? '') === 'deletedall') $msg = "All threads deleted.";
+if (($_GET['msg'] ?? '') === 'allread')     $msg = "All messages marked as read.";
+if (($_GET['msg'] ?? '') === 'threadread')  $msg = "Thread marked as read.";
+if (($_GET['msg'] ?? '') === 'deleted')     $msg = "Thread deleted.";
+if (($_GET['msg'] ?? '') === 'deletedall')  $msg = "All threads deleted.";
 
 // -----------------------------
 // FETCH THREADS
+// Show:
+// - Admin: user emails (user_admin) + internal threads to/from $me
+// - Non-admin: internal threads to/from $me only
 // -----------------------------
 $threads = [];
 
 try {
     if ($adminMode) {
-        // Admin inbox: group by user email (sender)
-        $sql = "
+        // 1) User inbox threads: group by user email (sender)
+        $sqlUser = "
             SELECT
               f.sender AS peer,
               MAX(f.created_at) AS last_time,
@@ -232,40 +267,86 @@ try {
               AND f.channel = 'user_admin'
               $readWhere
             GROUP BY f.sender
-            ORDER BY last_time DESC
         ";
-        $stmt = $dbh->prepare($sql);
-        $stmt->execute();
-        $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2) Internal threads (all allowed channels): group by other participant
+        $sqlInternal = "";
+        $paramsInternal = [];
+        if (!empty($internalChannels)) {
+            $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+            $sqlInternal = "
+                SELECT
+                  CASE
+                    WHEN f.sender = ? THEN f.receiver
+                    ELSE f.sender
+                  END AS peer,
+                  MAX(f.created_at) AS last_time,
+                  SUM(CASE WHEN f.is_read = 0 AND f.receiver = ? THEN 1 ELSE 0 END) AS unread_count,
+                  SUBSTRING_INDEX(
+                    GROUP_CONCAT(f.feedbackdata ORDER BY f.created_at DESC SEPARATOR ' ||| '),
+                    ' ||| ', 1
+                  ) AS last_message
+                FROM feedback f
+                WHERE (f.sender = ? OR f.receiver = ?)
+                  AND f.channel IN ($ph)
+                  $readWhere
+                GROUP BY peer
+            ";
+            $paramsInternal = array_merge([$me, $me, $me, $me], $internalChannels);
+        }
+
+        // Combine both lists
+        $all = [];
+
+        $stmt1 = $dbh->prepare($sqlUser);
+        $stmt1->execute();
+        $all = array_merge($all, $stmt1->fetchAll(PDO::FETCH_ASSOC));
+
+        if ($sqlInternal !== "") {
+            $stmt2 = $dbh->prepare($sqlInternal);
+            $stmt2->execute($paramsInternal);
+            $all = array_merge($all, $stmt2->fetchAll(PDO::FETCH_ASSOC));
+        }
+
+        // Sort by last_time desc
+        usort($all, function($a, $b){
+            return strtotime($b['last_time'] ?? '1970-01-01') <=> strtotime($a['last_time'] ?? '1970-01-01');
+        });
+
+        $threads = $all;
 
     } else {
-        // Internal inbox: group by OTHER participant (peer)
-        $ph = implode(',', array_fill(0, count($internalChannels), '?'));
+        // Non-admin: internal threads only
+        if (!empty($internalChannels)) {
+            $ph = implode(',', array_fill(0, count($internalChannels), '?'));
 
-        $sql = "
-            SELECT
-              CASE
-                WHEN f.sender = ? THEN f.receiver
-                ELSE f.sender
-              END AS peer,
-              MAX(f.created_at) AS last_time,
-              SUM(CASE WHEN f.is_read = 0 AND f.receiver = ? THEN 1 ELSE 0 END) AS unread_count,
-              SUBSTRING_INDEX(
-                GROUP_CONCAT(f.feedbackdata ORDER BY f.created_at DESC SEPARATOR ' ||| '),
-                ' ||| ', 1
-              ) AS last_message
-            FROM feedback f
-            WHERE (f.sender = ? OR f.receiver = ?)
-              AND f.channel IN ($ph)
-              $readWhere
-            GROUP BY peer
-            ORDER BY last_time DESC
-        ";
+            $sql = "
+                SELECT
+                  CASE
+                    WHEN f.sender = ? THEN f.receiver
+                    ELSE f.sender
+                  END AS peer,
+                  MAX(f.created_at) AS last_time,
+                  SUM(CASE WHEN f.is_read = 0 AND f.receiver = ? THEN 1 ELSE 0 END) AS unread_count,
+                  SUBSTRING_INDEX(
+                    GROUP_CONCAT(f.feedbackdata ORDER BY f.created_at DESC SEPARATOR ' ||| '),
+                    ' ||| ', 1
+                  ) AS last_message
+                FROM feedback f
+                WHERE (f.sender = ? OR f.receiver = ?)
+                  AND f.channel IN ($ph)
+                  $readWhere
+                GROUP BY peer
+                ORDER BY last_time DESC
+            ";
 
-        $stmt = $dbh->prepare($sql);
-        $params = array_merge([$me, $me, $me, $me], $internalChannels);
-        $stmt->execute($params);
-        $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt = $dbh->prepare($sql);
+            $params = array_merge([$me, $me, $me, $me], $internalChannels);
+            $stmt->execute($params);
+            $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $threads = [];
+        }
     }
 
 } catch (PDOException $e) {
@@ -302,15 +383,15 @@ try {
 <div class="content-wrapper">
 <div class="container-fluid">
 
-  <h2 class="page-title"><?php echo $adminMode ? 'Chat Inbox (Users → Admin)' : 'Chat Inbox (My Messages)'; ?></h2>
+  <h2 class="page-title"><?php echo $adminMode ? 'Chat Inbox' : 'My Chat Inbox'; ?></h2>
 
   <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlentities($error); ?></div><?php endif; ?>
   <?php if ($msg): ?><div class="alert alert-success"><?php echo htmlentities($msg); ?></div><?php endif; ?>
 
   <div class="panel panel-default">
-    <div class="panel-heading"><?php echo $adminMode ? 'Messages to Admin' : 'My Threads'; ?>
-  </div>
-    
+    <div class="panel-heading">
+      <?php echo $adminMode ? 'Messages (Users + Internal)' : 'My Threads'; ?>
+    </div>
 
     <div class="panel-body">
 
@@ -322,12 +403,13 @@ try {
         </div>
 
         <div style="display:flex;gap:8px;">
+          <a class="btn btn-success btn-sm" href="compose.php">
+            <i class="fa fa-plus"></i> New Message
+          </a>
+
           <form method="post" style="margin:0;">
-             <a class="btn btn-success btn-sm" href="compose.php">
-              <i class="fa fa-plus"></i> New Message
-            </a>
             <button type="submit" name="mark_all_read"
-                    class="btn btn-success btn-sm"
+                    class="btn btn-default btn-sm"
                     onclick="return confirm('Mark ALL as read?');"
                     <?php echo empty($threads) ? 'disabled' : ''; ?>>
               <i class="fa fa-check"></i> Mark All Read
@@ -349,7 +431,7 @@ try {
         <thead>
           <tr>
             <th>#</th>
-            <th><?php echo $adminMode ? 'From (User Email)' : 'Peer'; ?></th>
+            <th><?php echo $adminMode ? 'Peer (Email or Username)' : 'Peer'; ?></th>
             <th>Last Message</th>
             <th>Last Time</th>
             <th>Unread</th>

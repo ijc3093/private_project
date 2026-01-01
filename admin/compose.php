@@ -25,29 +25,19 @@ $targets = [];
 // (Gospel role 3 = no internal chat, unless you add it)
 try {
     if ($role === 1) {
-        $stmt = $dbh->prepare("
-            SELECT username, role
-            FROM admin
-            WHERE role IN (2,4)
-              AND status = 1
-              AND username <> :me
-            ORDER BY role, username
-        ");
-        $stmt->execute([':me' => $me]);
+    $stmt = $dbh->prepare("SELECT username, role FROM admin WHERE role IN (1,2,4) AND status=1 AND username <> :me ORDER BY role, username");
+    $stmt->execute([':me'=>$me]);
+    $targets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($role === 2) {
+        $stmt = $dbh->prepare("SELECT username, role FROM admin WHERE role IN (1,2) AND status=1 AND username <> :me ORDER BY role, username");
+        $stmt->execute([':me'=>$me]);
         $targets = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    } elseif ($role === 2 || $role === 4) {
-        $stmt = $dbh->prepare("
-            SELECT username, role
-            FROM admin
-            WHERE role = 1
-              AND status = 1
-              AND username <> :me
-            ORDER BY username
-        ");
-        $stmt->execute([':me' => $me]);
+    } elseif ($role === 4) {
+        $stmt = $dbh->prepare("SELECT username, role FROM admin WHERE role IN (1,4) AND status=1 AND username <> :me ORDER BY role, username");
+        $stmt->execute([':me'=>$me]);
         $targets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
 } catch (Throwable $e) {
     $targets = [];
 }
