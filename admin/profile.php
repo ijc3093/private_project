@@ -142,7 +142,7 @@ if (!$result) {
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Edit Profile</title>
+  <title>My Profile</title>
 
   <link rel="stylesheet" href="css/font-awesome.min.css">
   <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -170,7 +170,7 @@ if (!$result) {
 <div class="col-md-12">
 
 <div class="panel panel-default">
-  <div class="panel-heading"><?php echo htmlentities($_SESSION['admin_login']); ?></div>
+  <div class="panel-heading">My Profile - <?php echo htmlentities($_SESSION['admin_login']); ?></div>
 
   <?php if (!empty($error)): ?>
     <div class="errorWrap"><strong>ERROR</strong>: <?php echo htmlentities($error); ?></div>

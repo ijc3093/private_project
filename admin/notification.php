@@ -130,7 +130,7 @@ $title = isAdmin() ? 'Admin Notifications' : 'My Notifications';
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?php echo htmlentities($title); ?></title>
+  <title>Notification List</title>
 
   <link rel="stylesheet" href="css/font-awesome.min.css">
   <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -146,7 +146,6 @@ $title = isAdmin() ? 'Admin Notifications' : 'My Notifications';
 <div class="content-wrapper">
 <div class="container-fluid">
 
-  <h2 class="page-title"><?php echo htmlentities($title); ?></h2>
 
   <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlentities($error); ?></div><?php endif; ?>
   <?php if ($msg): ?><div class="alert alert-success"><?php echo htmlentities($msg); ?></div><?php endif; ?>

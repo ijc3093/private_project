@@ -383,7 +383,6 @@ try {
 <div class="content-wrapper">
 <div class="container-fluid">
 
-  <h2 class="page-title"><?php echo $adminMode ? 'Chat Inbox' : 'My Chat Inbox'; ?></h2>
 
   <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlentities($error); ?></div><?php endif; ?>
   <?php if ($msg): ?><div class="alert alert-success"><?php echo htmlentities($msg); ?></div><?php endif; ?>

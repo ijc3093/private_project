@@ -53,7 +53,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
     <meta name="theme-color" content="#3e454c">
-    <title>Accounts & Role List</title>
+    <title>Role List & Accounts</title>
 
     <link rel="stylesheet" href="css/font-awesome.min.css">
     <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -85,10 +85,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
 
         <div class="row">
             <div class="col-md-12">
-                <h2 class="page-title">List Roles & Accounts</h2>
+                <!-- <h2 class="page-title">List Roles & Accounts</h2> -->
 
                 <div class="panel panel-default">
-                    <div class="panel-heading">All Admin-side Accounts</div>
+                    <div class="panel-heading">List Roles & Accounts - All Admin-side Accounts</div>
                     <div class="panel-body">
 
                         <table id="accountsTable" class="display table table-striped table-bordered table-hover" width="100%">

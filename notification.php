@@ -63,7 +63,7 @@ function fmt_dt($dt) {
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Notifications</title>
+  <title>Notification List</title>
 
   <link rel="stylesheet" href="css/font-awesome.min.css">
   <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -89,12 +89,10 @@ function fmt_dt($dt) {
 <div class="content-wrapper">
 <div class="container-fluid">
 
-  <h2 class="page-title">
+  <!-- <h2 class="page-title">
     Notification
-    <?php if ($unreadCount > 0): ?>
-      <span class="badge-red"><?php echo $unreadCount; ?> Unread</span>
-    <?php endif; ?>
-  </h2>
+    
+  </h2> -->
 
   <?php if ($error): ?><div class="errorWrap"><?php echo htmlentities($error); ?></div><?php endif; ?>
   <?php if ($msg): ?><div class="succWrap"><?php echo htmlentities($msg); ?></div><?php endif; ?>
@@ -137,43 +135,40 @@ function fmt_dt($dt) {
           </tr>
         </thead>
         <tbody>
-        <?php $i=1; foreach ($rows as $r): ?>
-          <tr class="<?php echo ((int)$r['is_read'] === 0) ? 'unread' : ''; ?>" data-row="<?php echo (int)$r['id']; ?>">
-            <td><?php echo $i++; ?></td>
-            <td><?php echo htmlentities($r['notiuser']); ?></td>
-            <td><?php echo htmlentities($r['notitype']); ?></td>
-            <td><?php echo htmlentities(fmt_dt($r['created_at'])); ?></td>
-            <td class="statusCell">
-              <?php if ((int)$r['is_read'] === 1): ?>
-                <span class="label label-success">Read</span>
-              <?php else: ?>
-                <span class="label label-warning">Unread</span>
-              <?php endif; ?>
-            </td>
-            <td class="action-icons">
-              <?php if ((int)$r['is_read'] === 0): ?>
-              <a href="#" class="markReadBtn" data-id="<?php echo (int)$r['id']; ?>" title="Mark Read">
-                <i class="fa fa-check text-success"></i>
-              </a>
-              <?php endif; ?>
+            <?php $i=1; foreach ($rows as $r): ?>
+              <tr class="<?php echo ((int)$r['is_read'] === 0) ? 'unread' : ''; ?>" data-row="<?php echo (int)$r['id']; ?>">
+                <td><?php echo $i++; ?></td>
+                <td><?php echo htmlentities($r['notiuser']); ?></td>
+                <td><?php echo htmlentities($r['notitype']); ?></td>
+                <td><?php echo htmlentities(fmt_dt($r['created_at'])); ?></td>
+                <td class="statusCell">
+                  <?php if ((int)$r['is_read'] === 1): ?>
+                    <span class="label label-success">Read</span>
+                  <?php else: ?>
+                    <span class="label label-warning">Unread</span>
+                  <?php endif; ?>
+                </td>
+                <td class="action-icons">
+                  <?php if ((int)$r['is_read'] === 0): ?>
+                  <a href="#" class="markReadBtn" data-id="<?php echo (int)$r['id']; ?>" title="Mark Read">
+                    <i class="fa fa-check text-success"></i>
+                  </a>
+                  <?php endif; ?>
 
-              <a href="notification.php?filter=<?php echo urlencode($filter); ?>&del=<?php echo (int)$r['id']; ?>"
-                 onclick="return confirm('Delete this notification?');" title="Delete">
-                <i class="fa fa-trash text-danger"></i>
-              </a>
-            </td>
-          </tr>
-        <?php endforeach; ?>
+                  <a href="notification.php?filter=<?php echo urlencode($filter); ?>&del=<?php echo (int)$r['id']; ?>"
+                    onclick="return confirm('Delete this notification?');" title="Delete">
+                    <i class="fa fa-trash text-danger"></i>
+                  </a>
+                </td>
+              </tr>
+            <?php endforeach; ?>
         </tbody>
       </table>
-
     </div>
   </div>
-
 </div>
 </div>
 </div>
-
 <script src="js/jquery.min.js"></script>
 <script src="js/bootstrap.min.js"></script>
 <script src="js/jquery.dataTables.min.js"></script>
@@ -193,7 +188,7 @@ $(function(){
 
     if (!confirm('Mark this notification as read?')) return;
 
-    $.post('/Business_only/ajax/user_mark_read.php', { id: id }, function(resp){
+    $.post('/Business_only3/ajax/user_mark_read.php', { id: id }, function(resp){
       if (resp && resp.ok) location.reload();
       else alert(resp.error || 'Failed to mark read');
     }, 'json').fail(function(){
@@ -205,16 +200,32 @@ $(function(){
   $('#btnMarkAll').on('click', function(){
     if (!confirm('Mark ALL notifications as read?')) return;
 
-    $.post('/Business_only/ajax/user_mark_all_read.php', {}, function(resp){
+    $.post('/Business_only3/ajax/user_mark_all_read.php', {}, function(resp){
       if (resp && resp.ok) location.reload();
       else alert(resp.error || 'Failed to mark all read');
     }, 'json').fail(function(){
       alert('Request failed. Check file path and PHP errors.');
     });
   });
+
+  // Auto-hide success/error messages after 2.5s
+  setTimeout(function () {
+    const success = document.querySelector('.succWrap');
+    const error   = document.querySelector('.errorWrap');
+
+    if (success) {
+      success.style.transition = 'opacity 0.4s ease';
+      success.style.opacity = '0';
+      setTimeout(() => success.remove(), 400);
+    }
+
+    if (error) {
+      error.style.transition = 'opacity 0.4s ease';
+      error.style.opacity = '0';
+      setTimeout(() => error.remove(), 400);
+    }
+  }, 2500);
 });
 </script>
-
-
 </body>
 </html>

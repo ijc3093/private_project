@@ -46,13 +46,13 @@ function roleIn(string $roleKey, array $list): bool {
                 <i class="fa fa-dashboard"></i> Dashboard
             </a>
         </li>
-
-        <li>
-            <a href="adminroles.php">
-                <i class="fa fa-id-badge"></i> List Roles & Accounts
-            </a>
-        </li>
-
+        <?php if (roleIs($roleKey, 'admin')): ?>
+            <li>
+                <a href="adminroles.php">
+                    <i class="fa fa-id-badge"></i> List Roles & Accounts
+                </a>
+            </li>
+        <?php endif; ?>
         <?php if (roleIs($roleKey, 'admin')): ?>
             <li>
                 <a href="roleslist.php">
@@ -72,26 +72,26 @@ function roleIn(string $roleKey, array $list): bool {
             <!-- ✅ NEW: COMPOSE (start a new chat by selecting username/email) -->
             <li>
                 <a href="compose.php">
-                    <i class="fa fa-pencil"></i> Compose
+                    <i class="fa fa-pencil"></i> Start a Private Chat
                 </a>
             </li>
 
             <li>
                 <a href="feedback.php">
-                    <i class="fa fa-comments"></i> Feedback
+                    <i class="fa fa-comments"></i> Chat Inbox
                 </a>
             </li>
 
             <li>
                 <a href="notification.php">
-                    <i class="fa fa-bell"></i> Notifications
+                    <i class="fa fa-bell"></i> Notification List
                 </a>
             </li>
         <?php endif; ?>
 
         <li>
             <a href="profile.php">
-                <i class="fa fa-user-circle"></i> My Profile
+                <i class="fa fa-user"></i> My Profile
             </a>
         </li>
 

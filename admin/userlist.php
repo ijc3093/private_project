@@ -179,7 +179,7 @@ try {
 
         <div class="row">
             <div class="col-md-12">
-                <h2 class="page-title">List Users</h2>
+                <!-- <h2 class="page-title">List Users</h2> -->
 
                 <?php if ($error): ?>
                     <div class="errorWrap" id="msgshow"><strong>ERROR</strong>: <?php echo htmlentities($error); ?></div>
@@ -188,7 +188,7 @@ try {
                 <?php endif; ?>
 
                 <div class="panel panel-default">
-                    <div class="panel-heading">Users</div>
+                    <div class="panel-heading">List Users Users</div>
 
                     <div class="panel-body">
 

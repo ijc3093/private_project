@@ -1,4 +1,5 @@
 <?php
+// /Business_only3/includes/header.php
 require_once __DIR__ . '/session_user.php';
 requireUserLogin();
 
@@ -22,9 +23,9 @@ $displayName = ($userName !== '') ? $userName : $userEmail;
 
     <ul class="ts-profile-nav">
 
-        <!-- ✅ CHAT ICON + BADGE -->
-        <li >
-            <a href="messages.php" style="position:relative;display:inline-block;">
+        <!-- ✅ CHAT ICON -->
+        <li>
+            <a href="user_feedback.php" style="position:relative;display:inline-block;">
                 <i class="fa fa-comments" style="font-size:18px;"></i>
                 <span id="chatBadge"
                       style="display:none;position:absolute;top:10px;right:10px;background:red;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;font-weight:700;">
@@ -32,8 +33,8 @@ $displayName = ($userName !== '') ? $userName : $userEmail;
             </a>
         </li>
 
-        <!-- ✅ NOTIFICATION BELL + BADGE -->
-        <li >
+        <!-- ✅ NOTIFICATION ICON -->
+        <li>
             <a href="notification.php" style="position:relative;display:inline-block;">
                 <i class="fa fa-bell" style="font-size:18px;"></i>
                 <span id="notiBadge"
@@ -51,7 +52,6 @@ $displayName = ($userName !== '') ? $userName : $userEmail;
                   alt="Profile"
                   style="width:40px;height:40px;border-radius:50%;object-fit:cover;"
                 >
-
                 Account <i class="fa fa-angle-down hidden-side"></i>
             </a>
 
@@ -67,38 +67,37 @@ $displayName = ($userName !== '') ? $userName : $userEmail;
 
 <script>
 (function(){
-  function setBadge(id, n){
-    const el = document.getElementById(id);
-    if(!el) return;
-
+  function setBadge(el, n) {
+    if (!el) return;
     n = parseInt(n || 0, 10);
-    if(n > 0){
+    if (n > 0) {
       el.style.display = 'inline-block';
-      el.textContent = (n > 99) ? '99+' : n;
-    }else{
+      el.textContent = n > 99 ? '99+' : n;
+    } else {
       el.style.display = 'none';
       el.textContent = '';
     }
   }
 
-  async function pollBadges(){
-    try{
-      // 🔔 Notifications unread
-      const nRes = await fetch('ajax/notifications_poll.php', { cache: 'no-store' });
-      const nData = await nRes.json();
-      if(nData && nData.ok) setBadge('notiBadge', nData.unread);
-
-      // 💬 Chat unread (Admin -> user)
-      const cRes = await fetch('ajax/chat_unread_poll.php', { cache:'no-store' });
-      const cData = await cRes.json();
-      if(cData && cData.ok) setBadge('chatBadge', cData.unread);
-
-    }catch(e){
-      // ignore
-    }
+  async function pollChat(){
+    try {
+      const r = await fetch('/Business_only3/ajax/user_chat_unread_poll.php', { cache: 'no-store' });
+      const data = await r.json();
+      if (data && data.ok) setBadge(document.getElementById('chatBadge'), data.unread);
+    } catch(e){}
   }
 
-  pollBadges();
-  setInterval(pollBadges, 4000);
+  async function pollNoti(){
+    try {
+      const r = await fetch('/Business_only3/ajax/user_notifications_poll.php', { cache: 'no-store' });
+      const data = await r.json();
+      if (data && data.ok) setBadge(document.getElementById('notiBadge'), data.unread);
+    } catch(e){}
+  }
+
+  pollChat();
+  pollNoti();
+  setInterval(pollChat, 4000);
+  setInterval(pollNoti, 5000);
 })();
 </script>

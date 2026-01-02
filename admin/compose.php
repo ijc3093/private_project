@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Compose Message</title>
+  <title>Start a Private Chat</title>
 
   <link rel="stylesheet" href="css/font-awesome.min.css">
   <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="content-wrapper">
 <div class="container-fluid">
 
-  <h2 class="page-title">Compose</h2>
+  <!-- <h2 class="page-title">Compose</h2> -->
 
   <?php if ($error !== ''): ?>
     <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>

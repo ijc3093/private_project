@@ -42,64 +42,17 @@ $loggedEmail = $_SESSION['user_login'];
 <div class="content-wrapper">
     <div class="container-fluid">
 
-        <div class="row">
+        <!-- <div class="row">
             <div class="col-md-12">
                 <h2 class="page-title">Dashboard</h2>
             </div>
+        </div> -->
+        <div class="panel panel-default">
+
+            <div class="panel-heading">Dashboard</div>
+
+            
         </div>
-
-        <div class="row">
-
-            <!-- Feedback -->
-            <div class="col-md-3">
-                <div class="panel panel-default">
-                    <div class="panel-body bk-success text-light">
-                        <div class="stat-panel text-center">
-                            <?php
-                            $sql1 = "SELECT id FROM feedback WHERE receiver = :receiver";
-                            $query1 = $dbh->prepare($sql1);
-                            $query1->execute([':receiver' => $loggedEmail]);
-                            $feedbackCount = $query1->rowCount();
-                            ?>
-                            <div class="stat-panel-number h1">
-                                <?php echo (int)$feedbackCount; ?>
-                            </div>
-                            <div class="stat-panel-title text-uppercase">Messages</div>
-                        </div>
-                    </div>
-                    <a href="messages.php" class="block-anchor panel-footer text-center">
-                        Full Detail <i class="fa fa-arrow-right"></i>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Notification -->
-            <div class="col-md-3">
-                <div class="panel panel-default">
-                    <div class="panel-body bk-danger text-light">
-                        <div class="stat-panel text-center">
-                            <?php
-                            $sql2 = "SELECT id FROM notification WHERE notireceiver = :receiver";
-                            $query2 = $dbh->prepare($sql2);
-                            $query2->execute([':receiver' => $loggedEmail]);
-                            $notiCount = $query2->rowCount();
-                            ?>
-                            <div class="stat-panel-number h1">
-                                <?php echo (int)$notiCount; ?>
-                            </div>
-                            <div class="stat-panel-title text-uppercase">Notifications</div>
-                        </div>
-                    </div>
-                    <a href="notification.php" class="block-anchor panel-footer text-center">
-                        Full Detail <i class="fa fa-arrow-right"></i>
-                    </a>
-                </div>
-            </div>
-
-        </div>
-
-    </div>
-</div>
 </div>
 
 <script src="js/jquery.min.js"></script>

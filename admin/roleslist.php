@@ -195,7 +195,7 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
         <div class="row">
             <div class="col-md-12">
                 
-                <h2 class="page-title">List & Add New Role</h2>
+                <!-- <h2 class="page-title">List & Add New Role</h2> -->
                 <?php if ($error): ?>
                     <div class="errorWrap" id="msgshow"><?php echo htmlentities($error); ?></div>
                 <?php elseif ($msg): ?>
@@ -205,7 +205,7 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
                 <!-- Create Role -->
                 <div class="panel panel-default">
                     
-                    <div class="panel-heading">Create New Role</div>
+                    <div class="panel-heading">List & Add New Role - Create New Role</div>
                     <div class="panel-body">
                         <form method="post" class="form-inline">
                             <div class="form-group">

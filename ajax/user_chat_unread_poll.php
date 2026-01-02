@@ -1,5 +1,5 @@
 <?php
-// /Business_only3/ajax/user_notifications_poll.php
+// /Business_only3/ajax/user_chat_unread_poll.php
 require_once __DIR__ . '/../includes/session_user.php';
 requireUserLogin();
 
@@ -15,19 +15,21 @@ try {
     $controller = new Controller();
     $dbh = $controller->pdo();
 
-    $email = trim($_SESSION['user_login'] ?? '');
-    if ($email === '') {
+    $meEmail = trim($_SESSION['user_login'] ?? '');
+    if ($meEmail === '') {
         echo json_encode(['ok' => false, 'unread' => 0, 'error' => 'Missing user_login session']);
         exit;
     }
 
+    // Count unread messages addressed to this user
     $st = $dbh->prepare("
         SELECT COUNT(*)
-        FROM notification
-        WHERE notireceiver = :r
+        FROM feedback
+        WHERE receiver = :me
+          AND channel IN ('user_admin','user_user')
           AND is_read = 0
     ");
-    $st->execute([':r' => $email]);
+    $st->execute([':me' => $meEmail]);
 
     echo json_encode(['ok' => true, 'unread' => (int)$st->fetchColumn()]);
 } catch (Throwable $e) {

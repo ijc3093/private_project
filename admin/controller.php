@@ -182,37 +182,42 @@ class Controller
     /* =========================
        USER LOGIN (NO SESSION WRITE)
     ========================= */
-    public function userLogin(string $email, string $password): array|false
-    {
-        $stmt = $this->dbh->prepare("
-            SELECT id, name, email, password, image, status
-            FROM users
-            WHERE email = :email
-            LIMIT 1
-        ");
-        $stmt->execute([':email' => $email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+/* =========================
+   USER LOGIN (NO SESSION WRITE)
+========================= */
+public function userLogin(string $email, string $password): ?array
+{
+    $stmt = $this->dbh->prepare("
+        SELECT id, name, email, password, image, role, status
+        FROM users
+        WHERE email = :email
+        LIMIT 1
+    ");
+    $stmt->execute([':email' => $email]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$user) return false;
-        if ((int)$user['status'] !== 1) return false;
+    if (!$row) return null;
+    if ((int)$row['status'] !== 1) return null;
 
-        $dbHash = (string)$user['password'];
-
-        $ok = false;
-        if (password_get_info($dbHash)['algo'] !== 0) {
-            $ok = password_verify($password, $dbHash);
-        } else {
-            $ok = (md5($password) === $dbHash);
-            if ($ok) {
-                // auto-upgrade
-                $newHash = password_hash($password, PASSWORD_DEFAULT);
-                $up = $this->dbh->prepare("UPDATE users SET password = :p WHERE id = :id");
-                $up->execute([':p' => $newHash, ':id' => (int)$user['id']]);
-            }
-        }
-
-        return $ok ? $user : false;
+    $dbHash = (string)$row['password'];
+    if (!$this->userHashMatches($password, $dbHash)) {
+        return null;
     }
+
+    // ✅ upgrade legacy hash to password_hash() if needed
+    $this->upgradeUserPasswordIfNeeded((int)$row['id'], $password, $dbHash);
+
+    return [
+        'id'     => (int)$row['id'],
+        'name'   => (string)$row['name'],
+        'email'  => (string)$row['email'],
+        'role'   => (int)($row['role'] ?? 4),
+        'status' => (int)$row['status'],
+        'image'  => (string)($row['image'] ?? 'default.jpg'),
+    ];
+}
+
+
 
 
     /* =========================

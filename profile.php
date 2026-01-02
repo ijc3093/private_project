@@ -141,7 +141,7 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1') {
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Edit Profile</title>
+<title>My Profile</title>
 
 <link rel="stylesheet" href="css/font-awesome.min.css">
 <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -168,10 +168,10 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1') {
 <div class="container-fluid">
 <div class="row">
 <div class="col-md-12">
-<h2 class="page-title">Profile</h2>
+<!-- <h2 class="page-title">My Profile</h2> -->
 
 <div class="panel panel-default">
-<div class="panel-heading"><?php echo htmlentities($_SESSION['user_login']); ?></div>
+<div class="panel-heading">My Profile - <?php echo htmlentities($_SESSION['user_login']); ?></div>
 
 <?php if($error): ?>
 <div class="errorWrap"><strong>ERROR:</strong> <?php echo htmlentities($error); ?></div>

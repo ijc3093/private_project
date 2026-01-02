@@ -1,51 +1,78 @@
 <?php
+// /Business_only3/includes/leftbar.php
 require_once __DIR__ . '/session_user.php';
 requireUserLogin();
 ?>
 <nav class="ts-sidebar">
-    <ul class="ts-sidebar-menu">
+  <ul class="ts-sidebar-menu">
 
-        <li><a href="dashboard.php"><i class="fa fa-user"></i> &nbsp;Dashboard</a></li>
-        <li><a href="profile.php"><i class="fa fa-user"></i> &nbsp;Profile</a></li>
-        <li><a href="feedback.php"><i class="fa fa-envelope"></i> &nbsp;New Compose</a></li>
+    <li><a href="dashboard.php"><i class="fa fa-dashboard"></i> &nbsp;Dashboard</a></li>
+    <li><a href="profile.php"><i class="fa fa-user"></i> &nbsp;My Profile</a></li>
 
-        <li>
-            <a href="notification.php">
-                <i class="fa fa-bell"></i> &nbsp;Notification
-                <span id="notiBadge" class="badge" style="display:none;background:red;margin-left:6px;">0</span>
-            </a>
-        </li>
+    <!-- ✅ CHAT (User ↔ Admin + User ↔ User same-role) -->
+    <li>
+      <a href="user_feedback.php">
+        <i class="fa fa-comments"></i> &nbsp;Chat Inbox
+        <span id="chatBadgeSide" class="badge"
+              style="display:none;background:red;margin-left:6px;">0</span>
+      </a>
+    </li>
 
-        <li><a href="messages.php"><i class="fa fa-user-times"></i> &nbsp;Message</a></li>
-        <li><a href="logout.php"><i class="fa fa-sign-out"></i> &nbsp;Logout</a></li>
-    </ul>
+    <li>
+      <a href="compose_user.php">
+        <i class="fa fa-pencil"></i> &nbsp;Start a chat
+      </a>
+    </li>
+
+    <!-- ✅ NOTIFICATIONS -->
+    <li>
+      <a href="notification.php">
+        <i class="fa fa-bell"></i> &nbsp;Notification List
+        <span id="notiBadgeSide" class="badge"
+              style="display:none;background:red;margin-left:6px;">0</span>
+      </a>
+    </li>
+
+    <li><a href="logout.php"><i class="fa fa-sign-out"></i> &nbsp;Logout</a></li>
+  </ul>
 </nav>
 
 <script>
 (function() {
-  const badge = document.getElementById('notiBadge');
+  const chatBadge = document.getElementById('chatBadgeSide');
+  const notiBadge = document.getElementById('notiBadgeSide');
 
-  async function refreshUnread() {
-    try {
-      const res = await fetch('api/unread_count.php', { cache: 'no-store' });
-      const data = await res.json();
-
-      if (!data.ok) return;
-
-      const n = Number(data.count || 0);
-      if (n > 0) {
-        badge.textContent = n;
-        badge.style.display = 'inline-block';
-      } else {
-        badge.textContent = '0';
-        badge.style.display = 'none';
-      }
-    } catch (e) {
-      // ignore silently
+  function setBadge(el, n){
+    if (!el) return;
+    n = parseInt(n || 0, 10);
+    if (n > 0){
+      el.textContent = (n > 99) ? '99+' : n;
+      el.style.display = 'inline-block';
+    } else {
+      el.textContent = '0';
+      el.style.display = 'none';
     }
   }
 
-  refreshUnread();
-  setInterval(refreshUnread, 5000); // every 5 seconds
+  async function pollChat(){
+    try {
+      const r = await fetch('/Business_only3/ajax/user_chat_unread_poll.php', { cache: 'no-store' });
+      const data = await r.json();
+      if (data && data.ok) setBadge(chatBadge, data.unread);
+    } catch(e){}
+  }
+
+  async function pollNoti(){
+    try {
+      const r = await fetch('/Business_only3/ajax/user_notifications_poll.php', { cache: 'no-store' });
+      const data = await r.json();
+      if (data && data.ok) setBadge(notiBadge, data.unread);
+    } catch(e){}
+  }
+
+  pollChat();
+  pollNoti();
+  setInterval(pollChat, 4000);
+  setInterval(pollNoti, 5000);
 })();
 </script>
