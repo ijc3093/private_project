@@ -12,7 +12,7 @@ $displayName = ($userName !== '') ? $userName : $userEmail;
 
 <div class="brand clearfix">
     <h4 class="pull-left text-white" style="margin:20px 0 0 20px">
-        <i class="fa fa-rocket"></i>&nbsp; Gospel
+        <i class="fa fa-rocket"></i>&nbsp; Private App
     </h4>
 
     <h4 class="pull-left text-white" style="margin:20px 0 0 20px">
@@ -81,7 +81,7 @@ $displayName = ($userName !== '') ? $userName : $userEmail;
 
   async function pollChat(){
     try {
-      const r = await fetch('/Business_only3/ajax/user_chat_unread_poll.php', { cache: 'no-store' });
+      const r = await fetch('/Business_only3/ajax/user_chat_unread_poll.php');
       const data = await r.json();
       if (data && data.ok) setBadge(document.getElementById('chatBadge'), data.unread);
     } catch(e){}

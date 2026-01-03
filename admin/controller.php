@@ -87,12 +87,13 @@ class Controller
     // ---------------------------
     public function registerUser(array $data): bool
     {
-        $sql = "INSERT INTO users (name, email, password, gender, mobile, designation, image, status)
-                VALUES (:name, :email, :password, :gender, :mobile, :designation, :image, :status)";
+        $sql = "INSERT INTO users (name, username, email, password, gender, mobile, designation, image, status)
+                VALUES (:name, :username, :email, :password, :gender, :mobile, :designation, :image, :status)";
         $stmt = $this->dbh->prepare($sql);
 
         return $stmt->execute([
             ':name' => $data['name'],
+            ':username' => $data['name'],
             ':email' => $data['email'],
             ':password' => $data['password'], // store password_hash() result
             ':gender' => $data['gender'],
@@ -179,21 +180,18 @@ class Controller
         ];
     }
 
-    /* =========================
-       USER LOGIN (NO SESSION WRITE)
-    ========================= */
 /* =========================
    USER LOGIN (NO SESSION WRITE)
 ========================= */
-public function userLogin(string $email, string $password): ?array
+public function userLogin(string $username, string $password): ?array
 {
     $stmt = $this->dbh->prepare("
-        SELECT id, name, email, password, image, role, status
+        SELECT id, name, username, email, password, image, role, status
         FROM users
-        WHERE email = :email
+        WHERE username = :username
         LIMIT 1
     ");
-    $stmt->execute([':email' => $email]);
+    $stmt->execute([':username' => $username]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$row) return null;
@@ -210,6 +208,7 @@ public function userLogin(string $email, string $password): ?array
     return [
         'id'     => (int)$row['id'],
         'name'   => (string)$row['name'],
+        'username'   => (string)$row['username'],
         'email'  => (string)$row['email'],
         'role'   => (int)($row['role'] ?? 4),
         'status' => (int)$row['status'],

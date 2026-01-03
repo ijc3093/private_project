@@ -10,24 +10,24 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
-    $email    = trim($_POST['username'] ?? '');
+    $username    = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    if ($email === '' || $password === '') {
-        $error = "Please enter email and password.";
+    if ($username === '' || $password === '') {
+        $error = "Please enter username and password.";
     } else {
         try {
             $db = new Controller();
 
-            // IMPORTANT: userLogin must return id,email,name,image,role,status
-            $user = $db->userLogin($email, $password);
+            // IMPORTANT: userLogin must return id, username, email,name,image,role,status
+            $user = $db->userLogin($username, $password);
 
             if ($user) {
                 setUserSession($user);
                 header("Location: dashboard.php");
                 exit;
             } else {
-                $error = "Invalid email/password or account inactive.";
+                $error = "Invalid username/password or account inactive.";
             }
         } catch (Throwable $e) {
             $error = "Server error: " . $e->getMessage();
@@ -72,8 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                             <?php endif; ?>
 
                             <form method="post" autocomplete="off">
-                                <label class="text-uppercase text-sm">Your Email</label>
-                                <input type="email" placeholder="Email" name="username" class="form-control mb" required>
+                                <label class="text-uppercase text-sm">Your Username</label>
+                                <input type="username" placeholder="Username" name="username" class="form-control mb" required>
 
                                 <label class="text-uppercase text-sm">Password</label>
                                 <input type="password" placeholder="Password" name="password" class="form-control mb" required>

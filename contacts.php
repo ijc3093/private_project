@@ -1,4 +1,5 @@
 <?php
+// /Business_only3/contacts.php
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
@@ -18,17 +19,26 @@ $error = '';
 // Delete contact
 if (isset($_GET['del'])) {
     $id = (int)$_GET['del'];
-    $st = $dbh->prepare("DELETE FROM user_contacts WHERE id = :id AND owner_user_id = :me");
-    $st->execute([':id' => $id, ':me' => $meId]);
-    $msg = "Contact deleted.";
+    try {
+        $st = $dbh->prepare("DELETE FROM user_contacts WHERE id = :id AND owner_user_id = :me");
+        $st->execute([':id' => $id, ':me' => $meId]);
+        $msg = "Contact deleted.";
+    } catch (Throwable $e) {
+        $error = "Delete failed.";
+    }
 }
 
-// Load contacts
+// Load contacts (friend_user_id style)
 $st = $dbh->prepare("
-    SELECT id, contact_name, contact_email, contact_user_id
-    FROM user_contacts
-    WHERE owner_user_id = :me
-    ORDER BY contact_name ASC, id DESC
+  SELECT
+    uc.id,
+    uc.display_name,
+    u.friend_code,
+    u.email AS friend_email
+  FROM user_contacts uc
+  LEFT JOIN users u ON u.id = uc.friend_user_id
+  WHERE uc.owner_user_id = :me
+  ORDER BY COALESCE(uc.display_name, u.friend_code, u.email) ASC, uc.id DESC
 ");
 $st->execute([':me' => $meId]);
 $rows = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -76,15 +86,25 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
       <div class="alert alert-info">No contacts yet.</div>
     <?php else: ?>
       <?php foreach ($rows as $c): ?>
+        <?php
+          $display = (string)($c['display_name'] ?? '');
+          $code    = (string)($c['friend_code'] ?? '');
+          $email   = (string)($c['friend_email'] ?? '');
+
+          $label   = $display !== '' ? $display : ($code !== '' ? $code : $email);
+          $sub     = $code !== '' ? $code : $email;
+
+          $toParam = $code !== '' ? $code : $email; // Prefer friend_code for compose
+        ?>
         <div class="rowline">
           <div>
-            <div style="font-weight:700;"><?php echo htmlentities($c['contact_name'] ?: $c['contact_email']); ?></div>
-            <small class="text-muted"><?php echo htmlentities($c['contact_email']); ?></small>
+            <div style="font-weight:700;"><?php echo htmlentities($label); ?></div>
+            <small class="text-muted"><?php echo htmlentities($sub); ?></small>
           </div>
 
           <div style="display:flex;gap:8px;">
             <a class="btn btn-success btn-xs"
-               href="compose.php?to=<?php echo urlencode($c['contact_email']); ?>">
+               href="compose.php?to=<?php echo urlencode($toParam); ?>">
               <i class="fa fa-comment"></i> Message
             </a>
 

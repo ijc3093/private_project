@@ -1,4 +1,5 @@
 <?php
+// /Business_only3/compose.php
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
@@ -11,87 +12,77 @@ ini_set('display_errors', '1');
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$meId    = (int)($_SESSION['user_id'] ?? 0);
-$meEmail = trim($_SESSION['user_login'] ?? '');
+$meId    = userId();
+$meEmail = userEmail();
 
+$msg = '';
 $error = '';
-$prefill = trim($_GET['to'] ?? '');
 
-function clean_code(string $code): string {
-    $code = strtoupper(trim($code));
-    $code = preg_replace('/[^A-Z0-9\-]/', '', $code);
-    return $code;
+$prefillTo = trim($_GET['to'] ?? '');
+
+/**
+ * Resolve To value:
+ * - "Admin" or "support" => Admin chat
+ * - friend_code => get users.email
+ * - email => use directly (only if user exists and active)
+ */
+function resolveRecipient(PDO $dbh, string $to): array {
+    $to = trim($to);
+
+    // Support Center shortcuts
+    if (strcasecmp($to, 'admin') === 0 || strcasecmp($to, 'support') === 0 || strcasecmp($to, 'support center') === 0) {
+        return ['mode' => 'admin', 'email' => 'Admin', 'label' => 'Support Center'];
+    }
+
+    // If looks like email
+    if (strpos($to, '@') !== false) {
+        if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return ['mode' => 'error', 'error' => 'Invalid email format.'];
+        }
+
+        // must be a real active user OR active admin email
+        $stA = $dbh->prepare("SELECT idadmin FROM admin WHERE email = :e AND status=1 LIMIT 1");
+        $stA->execute([':e' => $to]);
+        if ($stA->fetchColumn()) {
+            return ['mode' => 'adminEmail', 'email' => $to, 'label' => 'Support Center'];
+        }
+
+        $stU = $dbh->prepare("SELECT id, email, status FROM users WHERE email = :e LIMIT 1");
+        $stU->execute([':e' => $to]);
+        $u = $stU->fetch(PDO::FETCH_ASSOC);
+
+        if (!$u) return ['mode' => 'error', 'error' => 'User email not found.'];
+        if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
+
+        return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['email']];
+    }
+
+    // Friend code
+    $st = $dbh->prepare("SELECT id, email, friend_code, status FROM users WHERE friend_code = :fc LIMIT 1");
+    $st->execute([':fc' => $to]);
+    $u = $st->fetch(PDO::FETCH_ASSOC);
+
+    if (!$u) return ['mode' => 'error', 'error' => 'Friend code not found.'];
+    if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
+
+    return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['friend_code'] ?: $u['email']];
 }
 
-// If form submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $to = trim($_POST['to'] ?? '');
-    $to = preg_replace('/\s+/', '', $to); // remove spaces
-
     if ($to === '') {
-        $error = "Please enter a recipient (friend code or email).";
+        $error = "Please enter To: friend code or email.";
     } else {
-
-        // 1) If it looks like FRIEND CODE (contains -) => resolve to user by friend_code
-        if (strpos($to, '-') !== false) {
-            $code = clean_code($to);
-
-            $st = $dbh->prepare("SELECT id, email FROM users WHERE friend_code = :c LIMIT 1");
-            $st->execute([':c' => $code]);
-            $u = $st->fetch(PDO::FETCH_ASSOC);
-
-            if (!$u) {
-                $error = "Friend Code not found.";
-            } elseif ((int)$u['id'] === $meId) {
-                $error = "You cannot message yourself.";
-            } else {
-                // Auto-add to contacts (optional)
-                $ins = $dbh->prepare("
-                    INSERT IGNORE INTO user_contacts (owner_user_id, contact_user_id, contact_email, contact_name)
-                    VALUES (:me, :cid, :email, :name)
-                ");
-                $ins->execute([
-                    ':me' => $meId,
-                    ':cid' => (int)$u['id'],
-                    ':email' => $u['email'],
-                    ':name' => $u['email']
-                ]);
-
-                header("Location: user_chat.php?to=" . urlencode($u['email']));
-                exit;
-            }
-
+        $res = resolveRecipient($dbh, $to);
+        if (($res['mode'] ?? '') === 'error') {
+            $error = $res['error'] ?? 'Invalid recipient.';
         } else {
-            // 2) Otherwise treat as EMAIL
-            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
-                $error = "Enter a valid email or Friend Code (XXXX-XXXX-XXXX).";
-            } else {
-                // Must exist in users table (optional but recommended)
-                $st = $dbh->prepare("SELECT id, email FROM users WHERE email = :e LIMIT 1");
-                $st->execute([':e' => $to]);
-                $u = $st->fetch(PDO::FETCH_ASSOC);
-
-                if (!$u) {
-                    $error = "This user email does not exist.";
-                } elseif (strcasecmp($to, $meEmail) === 0) {
-                    $error = "You cannot message yourself.";
-                } else {
-                    // Auto-add contact (optional)
-                    $ins = $dbh->prepare("
-                        INSERT IGNORE INTO user_contacts (owner_user_id, contact_user_id, contact_email, contact_name)
-                        VALUES (:me, :cid, :email, :name)
-                    ");
-                    $ins->execute([
-                        ':me' => $meId,
-                        ':cid' => (int)$u['id'],
-                        ':email' => $u['email'],
-                        ':name' => $u['email']
-                    ]);
-
-                    header("Location: user_chat.php?to=" . urlencode($u['email']));
-                    exit;
-                }
-            }
+            // For chat page we pass reply as:
+            // - 'Admin' (support)
+            // - or peer email (user or admin email)
+            $reply = ($res['mode'] === 'admin' || $res['mode'] === 'adminEmail') ? 'Admin' : $res['email'];
+            header("Location: sendreply_user.php?reply=" . urlencode($reply));
+            exit;
         }
     }
 }
@@ -103,13 +94,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New Message</title>
 
-  <link rel="stylesheet" href="css/bootstrap.min.css">
   <link rel="stylesheet" href="css/font-awesome.min.css">
+  <link rel="stylesheet" href="css/bootstrap.min.css">
   <link rel="stylesheet" href="css/style.css">
 
   <style>
-    .errorWrap{padding:10px;background:#dd3d36;color:#fff;margin:0 0 15px;}
     .box{background:#fff;border:1px solid #ddd;border-radius:8px;padding:18px;}
+    .hint{color:#777;font-size:13px;}
   </style>
 </head>
 <body>
@@ -123,19 +114,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <h2 class="page-title">New Message</h2>
 
-  <?php if ($error): ?><div class="errorWrap"><?php echo htmlentities($error); ?></div><?php endif; ?>
+  <?php if ($error): ?>
+    <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
+  <?php endif; ?>
 
   <div class="box">
     <form method="post" autocomplete="off">
       <div class="form-group">
-        <label>To:</label>
+        <label>To</label>
         <input type="text" name="to" class="form-control"
-               placeholder="Friend Code (XXXX-XXXX-XXXX) or Email"
-               value="<?php echo htmlentities($prefill); ?>"
-               required>
-        <small class="text-muted">
-          Tip: meet in person, exchange Friend Code, then message.
-        </small>
+               value="<?php echo htmlentities($prefillTo); ?>"
+               placeholder="Friend code (ABCD-EFGH-IJKL)" required>
+        <div class="hint" style="margin-top:8px;">
+          Tip: Add friends using <a href="add_contact.php">Add Contact</a>.  
+          For support, type <b>Admin</b> or <b>Support</b>.
+        </div>
       </div>
 
       <button class="btn btn-primary" type="submit">
@@ -143,10 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </button>
 
       <a class="btn btn-default" href="contacts.php" style="margin-left:8px;">
-        My Contacts
-      </a>
-      <a class="btn btn-default" href="add_contact.php" style="margin-left:8px;">
-        Add Contact
+        View Contacts
       </a>
     </form>
   </div>

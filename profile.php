@@ -12,6 +12,12 @@ requireUserLogin();
 $controller = new Controller();
 $dbh = $controller->pdo();
 
+// session values set by setUserSession()
+$userEmail = $_SESSION['user_login'] ?? '';
+$userName  = $_SESSION['user_name'] ?? '';
+
+$displayName = ($userName !== '') ? $userName : $userEmail;
+
 $msg = '';
 $error = '';
 
@@ -35,7 +41,7 @@ function generateFriendCode(): string {
 // ------------------------------------
 $sessionEmail = $_SESSION['user_login'] ?? '';
 
-$sql = "SELECT id, name, email, mobile, designation, image_type, friend_code
+$sql = "SELECT id, name, username, email, mobile, designation, image_type, friend_code
         FROM users
         WHERE email = :email
         LIMIT 1";
@@ -233,7 +239,7 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1') {
 <div class="col-md-12">
 
 <div class="panel panel-default">
-<div class="panel-heading">My Profile - <?php echo htmlentities($_SESSION['user_login']); ?></div>
+<div class="panel-heading">My Profile - <?php echo htmlentities($displayName); ?></div>
 
 <?php if($error): ?>
   <div class="errorWrap"><strong>ERROR:</strong> <?php echo htmlentities($error); ?></div>

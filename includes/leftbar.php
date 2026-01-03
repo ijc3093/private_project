@@ -16,7 +16,7 @@ requireUserLogin();
         <span id="chatBadgeSide" class="badge" style="display:none;background:red;margin-left:6px;">0</span>
       </a>
     </li> -->
-
+    <li><a href="user_feedback.php"><i class="fa fa-comments"></i> &nbsp;Messages</a></li>
     <li><a href="compose.php"><i class="fa fa-envelope"></i> &nbsp;New Message</a></li>
     <li><a href="contact_requests.php"><i class="fa fa-user-plus"></i> &nbsp;Requests</a></li>
     <li><a href="support.php"><i class="fa fa-life-ring"></i> &nbsp;Support</a></li>

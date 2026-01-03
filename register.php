@@ -18,6 +18,7 @@ if (isset($_POST['submit'])) {
     // 1) Sanitize input
     // -----------------------------
     $name        = trim($_POST['name'] ?? '');
+    $username        = trim($_POST['username'] ?? '');
     $email       = trim($_POST['email'] ?? '');
     $passwordRaw = trim($_POST['password'] ?? '');
     $gender      = trim($_POST['gender'] ?? '');
@@ -25,7 +26,7 @@ if (isset($_POST['submit'])) {
     $designation = trim($_POST['designation'] ?? '');
 
     // Basic validation
-    if ($name === '' || $email === '' || $passwordRaw === '' || $gender === '' || $mobileno === '' || $designation === '') {
+    if ($name === '' || $username === '' || $email === '' || $passwordRaw === '' || $gender === '' || $mobileno === '' || $designation === '') {
         $error = "Please fill all required fields.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email address.";
@@ -83,11 +84,12 @@ if (isset($_POST['submit'])) {
                     $dbh->beginTransaction();
 
                     // ✅ Insert public user (status=1 confirmed)
-                    $sql = "INSERT INTO users (name, email, password, gender, mobile, designation, image, status)
-                            VALUES (:name, :email, :password, :gender, :mobile, :designation, :image, 1)";
+                    $sql = "INSERT INTO users (name, username, email, password, gender, mobile, designation, image, status)
+                            VALUES (:name, :username, :email, :password, :gender, :mobile, :designation, :image, 1)";
                     $query = $dbh->prepare($sql);
                     $query->execute([
                         ':name'        => $name,
+                        ':username'    => $username,
                         ':email'       => $email,
                         ':password'    => $password,
                         ':gender'      => $gender,
@@ -188,10 +190,11 @@ if (isset($_POST['submit'])) {
                             <form method="post" class="form-horizontal" enctype="multipart/form-data" name="regform" onsubmit="return validate();">
 
                                 <div class="form-group">
-                                    <label class="col-sm-2 control-label">Name *</label>
+                                    <label class="col-sm-2 control-label">Full Name *</label>
                                     <div class="col-sm-4">
                                         <input type="text" name="name" class="form-control" required>
                                     </div>
+
 
                                     <label class="col-sm-2 control-label">Email *</label>
                                     <div class="col-sm-4">
@@ -200,14 +203,14 @@ if (isset($_POST['submit'])) {
                                 </div>
 
                                 <div class="form-group">
+                                    <label class="col-sm-2 control-label">Username *</label>
+                                    <div class="col-sm-4">
+                                        <input type="username" name="username" class="form-control" required>
+                                    </div>
+
                                     <label class="col-sm-2 control-label">Password *</label>
                                     <div class="col-sm-4">
                                         <input type="password" name="password" class="form-control" required>
-                                    </div>
-
-                                    <label class="col-sm-2 control-label">Designation *</label>
-                                    <div class="col-sm-4">
-                                        <input type="text" name="designation" class="form-control" required>
                                     </div>
                                 </div>
 
@@ -232,6 +235,11 @@ if (isset($_POST['submit'])) {
                                     <div class="col-sm-4">
                                         <input type="file" name="image" class="form-control">
                                         <small>Allowed: jpg, jpeg, png</small>
+                                    </div>
+
+                                    <label class="col-sm-2 control-label">Designation *</label>
+                                    <div class="col-sm-4">
+                                        <input type="text" name="designation" class="form-control" required>
                                     </div>
                                 </div>
 
