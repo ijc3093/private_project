@@ -8,7 +8,7 @@ class Config {
     private string $server   = "localhost";
     private string $username = "root";
     private string $password = "root";
-    private string $dbname   = "gospel";
+    private string $dbname   = "private_project";
 
     // SMTP (Gmail)
     public string $SMTP_HOST = "smtp.gmail.com";
@@ -16,7 +16,7 @@ class Config {
     public string $SMTP_USER = "YOUR_GMAIL@gmail.com";
     public string $SMTP_PASS = "YOUR_GMAIL_APP_PASSWORD"; // Gmail App Password
     public string $SMTP_FROM = "YOUR_GMAIL@gmail.com";
-    public string $SMTP_FROM_NAME = "Gospel App";
+    public string $SMTP_FROM_NAME = "Private App";
 
     // When receiver is 'Admin', we email this address:
     public string $ADMIN_ALERT_EMAIL = "YOUR_GMAIL@gmail.com";

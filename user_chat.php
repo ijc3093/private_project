@@ -1,249 +1,139 @@
 <?php
-// /Business_only3/user_chat.php
-
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
-require_once __DIR__ . '/controller.php';
-require_once __DIR__ . '/includes/identity_user.php';
+require_once __DIR__ . '/includes/user_identity.php';
+require_once __DIR__ . '/admin/controller.php';
 
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', '1');
 
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$meEmail = myUserKey();
-$myRole  = myUserRoleId();
+$meEmail = userEmail();
+$meId = userId();
 
-if ($meEmail === '' || $myRole <= 0) die("Invalid user session.");
-
-$toRaw = trim(urldecode($_GET['to'] ?? ''));
-if ($toRaw === '') die("Missing chat target.");
-
-$isAdminChat = (strcasecmp($toRaw, 'Admin') === 0);
-$isEmailTarget = (strpos($toRaw, '@') !== false);
-
-$channel = '';
-$peer    = ''; // peer identity used in DB
-
-// Decide mode
-if ($isAdminChat) {
-    $channel = 'user_admin';
-    $peer = 'Admin';
-} else {
-    if (!$isEmailTarget) die("Invalid target.");
-    $peer = $toRaw;
-
-    // Enforce same-role user chat
-    $chk = $dbh->prepare("
-        SELECT role, status
-        FROM users
-        WHERE email = :e
-        LIMIT 1
-    ");
-    $chk->execute([':e' => $peer]);
-    $row = $chk->fetch(PDO::FETCH_ASSOC);
-
-    if (!$row) die("User not found.");
-    if ((int)$row['status'] !== 1) die("User inactive.");
-    if ((int)$row['role'] !== $myRole) die("You can only chat with users in your same role.");
-
-    $channel = 'user_user';
+$to = trim(urldecode($_GET['to'] ?? ''));
+if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+    die("Missing or invalid recipient.");
 }
+if (strcasecmp($to, $meEmail) === 0) die("You cannot message yourself.");
 
-function fmt_dt($dt) {
-    return $dt ? date('M d, Y h:i A', strtotime($dt)) : '';
-}
-function safe_text($txt) {
-    return nl2br(htmlentities($txt ?? ''));
-}
+// Optional: ensure recipient exists
+$chk = $dbh->prepare("SELECT id, email FROM users WHERE email = :e LIMIT 1");
+$chk->execute([':e' => $to]);
+$recipient = $chk->fetch(PDO::FETCH_ASSOC);
+if (!$recipient) die("Recipient not found.");
 
-// Mark unread incoming messages as read (when opening chat)
+$channel = 'user_user';
+$error = '';
+
+// Mark unread from peer to me as read
 try {
-    if ($channel === 'user_admin') {
-        // Admin -> me
-        $mk = $dbh->prepare("
-            UPDATE feedback
-            SET is_read = 1, read_at = NOW()
-            WHERE channel = 'user_admin'
-              AND sender = 'Admin'
-              AND receiver = :me
-              AND is_read = 0
-        ");
-        $mk->execute([':me' => $meEmail]);
-    } else {
-        // peer -> me
-        $mk = $dbh->prepare("
-            UPDATE feedback
-            SET is_read = 1, read_at = NOW()
-            WHERE channel = 'user_user'
-              AND sender = :peer
-              AND receiver = :me
-              AND is_read = 0
-        ");
-        $mk->execute([':peer' => $peer, ':me' => $meEmail]);
-    }
+    $mk = $dbh->prepare("
+        UPDATE feedback
+        SET is_read = 1, read_at = NOW()
+        WHERE channel = 'user_user'
+          AND sender = :peer
+          AND receiver = :me
+          AND is_read = 0
+    ");
+    $mk->execute([':peer' => $to, ':me' => $meEmail]);
 } catch (Throwable $e) {}
 
 // Send message
-$error = '';
 if (isset($_POST['send'])) {
     $text = trim($_POST['message'] ?? '');
 
-    // optional attachment
-    $attachment = null;
-    $folder = __DIR__ . "/attachment/";
-    if (!is_dir($folder)) @mkdir($folder, 0755, true);
-
-    if (!empty($_FILES['attachment']['name'])) {
-        $file     = $_FILES['attachment']['name'];
-        $file_loc = $_FILES['attachment']['tmp_name'];
-        $ext      = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-
-        $allowed  = ['jpg','jpeg','png','pdf','doc','docx'];
-        if (!in_array($ext, $allowed, true)) {
-            $error = "Invalid attachment type.";
-        } else {
-            $base = preg_replace('/[^a-zA-Z0-9-_]/', '-', pathinfo($file, PATHINFO_FILENAME));
-            $final_file = strtolower($base . '-' . time() . '.' . $ext);
-
-            if (move_uploaded_file($file_loc, $folder . $final_file)) {
-                $attachment = $final_file;
-            } else {
-                $error = "Attachment upload failed.";
-            }
-        }
-    }
-
-    if ($error === '' && $text === '' && !$attachment) {
-        $error = "Message cannot be empty (add text or attachment).";
-    }
-
-    if ($error === '') {
-        try {
-            if ($channel === 'user_admin') {
-                // user -> Admin (shared inbox)
-                $st = $dbh->prepare("
-                    INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, attachment, is_read)
-                    VALUES (:s, 'Admin', 'user_admin', 'Chat', :d, :a, 0)
-                ");
-                $st->execute([
-                    ':s' => $meEmail,
-                    ':d' => $text,
-                    ':a' => $attachment
-                ]);
-
-                // notify admin shared key
-                $nt = $dbh->prepare("
-                    INSERT INTO notification (notiuser, notireceiver, notitype, is_read)
-                    VALUES (:u, 'Admin', 'New chat message', 0)
-                ");
-                $nt->execute([':u' => $meEmail]);
-
-            } else {
-                // user -> user
-                $st = $dbh->prepare("
-                    INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, attachment, is_read)
-                    VALUES (:s, :r, 'user_user', 'Chat', :d, :a, 0)
-                ");
-                $st->execute([
-                    ':s' => $meEmail,
-                    ':r' => $peer,
-                    ':d' => $text,
-                    ':a' => $attachment
-                ]);
-
-                // notify peer email
-                $nt = $dbh->prepare("
-                    INSERT INTO notification (notiuser, notireceiver, notitype, is_read)
-                    VALUES (:u, :r, 'New chat message', 0)
-                ");
-                $nt->execute([':u' => $meEmail, ':r' => $peer]);
-            }
-
-            header("Location: user_chat.php?to=" . urlencode($toRaw));
-            exit;
-
-        } catch (PDOException $e) {
-            $error = "Database error: " . $e->getMessage();
-        }
-    }
-}
-
-// Load history
-$rows = [];
-try {
-    if ($channel === 'user_admin') {
-        $stmt = $dbh->prepare("
-            SELECT id, sender, receiver, feedbackdata, attachment, created_at
-            FROM feedback
-            WHERE channel = 'user_admin'
-              AND (
-                    (sender = :me AND receiver = 'Admin')
-                 OR (sender = 'Admin' AND receiver = :me2)
-              )
-            ORDER BY created_at ASC
-        ");
-        $stmt->execute([':me' => $meEmail, ':me2' => $meEmail]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($text === '') {
+        $error = "Message cannot be empty.";
     } else {
-        $stmt = $dbh->prepare("
-            SELECT id, sender, receiver, feedbackdata, attachment, created_at
-            FROM feedback
-            WHERE channel = 'user_user'
-              AND (
-                    (sender = :me AND receiver = :peer)
-                 OR (sender = :peer2 AND receiver = :me2)
-              )
-            ORDER BY created_at ASC
+        $st = $dbh->prepare("
+            INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, is_read)
+            VALUES (:s, :r, 'user_user', 'Chat', :m, 0)
         ");
-        $stmt->execute([
-            ':me' => $meEmail,
-            ':peer' => $peer,
-            ':peer2' => $peer,
-            ':me2' => $meEmail
+        $st->execute([
+            ':s' => $meEmail,
+            ':r' => $to,
+            ':m' => $text
         ]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Notification (optional) — notify receiver email
+        $noti = $dbh->prepare("
+            INSERT INTO notification (notiuser, notireceiver, notitype, is_read)
+            VALUES (:u, :r, 'New chat message', 0)
+        ");
+        $noti->execute([
+            ':u' => $meEmail,
+            ':r' => $to
+        ]);
+
+        header("Location: user_chat.php?to=" . urlencode($to));
+        exit;
     }
-} catch (PDOException $e) {
-    $error = "DB error: " . $e->getMessage();
 }
 
-$pageTitle = $isAdminChat ? 'Chat with Admin' : ('Chat with ' . $peer);
+// Load chat history
+$st = $dbh->prepare("
+    SELECT id, sender, receiver, feedbackdata, created_at
+    FROM feedback
+    WHERE channel = 'user_user'
+      AND (
+            (sender = :me AND receiver = :peer)
+         OR (sender = :peer2 AND receiver = :me2)
+      )
+    ORDER BY created_at ASC
+");
+$st->execute([
+    ':me' => $meEmail,
+    ':peer' => $to,
+    ':peer2' => $to,
+    ':me2' => $meEmail
+]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+function safe_text($txt) {
+    return nl2br(htmlentities($txt ?? ''));
+}
+function fmt_dt($dt) {
+    return $dt ? date('M d, Y h:i A', strtotime($dt)) : '';
+}
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?php echo htmlentities($pageTitle); ?></title>
+  <title>Chat</title>
 
-  <link rel="stylesheet" href="admin/css/bootstrap.min.css">
-  <link rel="stylesheet" href="admin/css/font-awesome.min.css">
+  <link rel="stylesheet" href="css/bootstrap.min.css">
+  <link rel="stylesheet" href="css/font-awesome.min.css">
+  <link rel="stylesheet" href="css/style.css">
 
   <style>
-    body{background:#f5f6f7;}
-    .wrap{max-width:1000px;margin:20px auto;padding:0 15px;}
     .chat-wrap{max-height:55vh;overflow:auto;padding:15px;background:#f7f7f7;border:1px solid #ddd;border-radius:8px;}
     .row-msg{display:flex;width:100%;margin:6px 0;}
     .row-left{justify-content:flex-start;}
     .row-right{justify-content:flex-end;}
-    .bubble{padding:10px 12px;border-radius:14px;max-width:75%;word-wrap:break-word;background:#eee;border:1px solid #e5e5e5;}
+    .bubble{display:inline-block;padding:10px 12px;border-radius:14px;max-width:75%;word-wrap:break-word;background:#eee;border:1px solid #e5e5e5;}
     .bubble-me{background:#dff1ff;border-color:#cbe8ff;}
-    .meta{font-size:12px;color:#777;margin-top:4px;}
+    .meta{font-size:12px;color:#777;margin-top:2px;}
     .form-box{margin-top:12px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px;}
-    textarea.form-control{background:#fff;color:#000;}
-    .text-muted{color:#777!important;}
   </style>
 </head>
 <body>
 
-<div class="wrap">
-  <h3 style="margin-top:0;">
-    <?php echo htmlentities($pageTitle); ?>
-    <small class="text-muted" style="margin-left:8px;">(<?php echo htmlentities($channel); ?>)</small>
-  </h3>
+<?php include __DIR__ . '/includes/header.php'; ?>
+<div class="ts-main-content">
+<?php include __DIR__ . '/includes/leftbar.php'; ?>
+
+<div class="content-wrapper">
+<div class="container-fluid">
+
+  <h2 class="page-title">
+    Chat with: <strong><?php echo htmlentities($to); ?></strong>
+  </h2>
 
   <?php if ($error): ?>
     <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
@@ -258,21 +148,11 @@ $pageTitle = $isAdminChat ? 'Chat with Admin' : ('Chat with ' . $peer);
           $isMe = (strcasecmp($r['sender'], $meEmail) === 0);
           $rowClass  = $isMe ? 'row-right' : 'row-left';
           $bubbleCls = $isMe ? 'bubble bubble-me' : 'bubble';
-          $who = $isMe ? 'You' : $r['sender'];
+          $who = $isMe ? 'You' : 'Friend';
         ?>
         <div class="row-msg <?php echo $rowClass; ?>">
           <div class="<?php echo $bubbleCls; ?>">
             <?php echo safe_text($r['feedbackdata']); ?>
-
-            <?php if (!empty($r['attachment'])): ?>
-              <div style="margin-top:8px;">
-                <i class="fa fa-paperclip"></i>
-                <a target="_blank" href="attachment/<?php echo urlencode($r['attachment']); ?>">
-                  <?php echo htmlentities($r['attachment']); ?>
-                </a>
-              </div>
-            <?php endif; ?>
-
             <div class="meta"><?php echo htmlentities($who); ?> • <?php echo htmlentities(fmt_dt($r['created_at'])); ?></div>
           </div>
         </div>
@@ -281,57 +161,41 @@ $pageTitle = $isAdminChat ? 'Chat with Admin' : ('Chat with ' . $peer);
   </div>
 
   <div class="form-box">
-    <form id="chatForm" method="post" enctype="multipart/form-data" autocomplete="off">
+    <form method="post" autocomplete="off">
       <div class="row">
-        <div class="col-md-8">
-          <textarea id="chatInput" name="message" class="form-control" rows="4" placeholder="Type your message..."></textarea>
+        <div class="col-md-9">
+          <textarea name="message" class="form-control" rows="3" placeholder="Type message..."></textarea>
         </div>
-        <div class="col-md-4">
-          <input type="file" name="attachment" class="form-control">
-          <br>
-          <button type="submit" name="send" class="btn btn-primary btn-block">
+        <div class="col-md-3">
+          <button type="submit" name="send" class="btn btn-primary btn-block" style="height:100%;">
             <i class="fa fa-send"></i> Send
           </button>
-          <small class="text-muted">Allowed: jpg, jpeg, png, pdf, doc, docx</small>
         </div>
       </div>
     </form>
   </div>
 
-  <p style="margin-top:10px;">
-    <a class="btn btn-default" href="compose_user.php"><i class="fa fa-arrow-left"></i> Back</a>
-  </p>
+</div>
+</div>
 </div>
 
+<script src="js/jquery.min.js"></script>
+<script src="js/bootstrap.min.js"></script>
 <script>
 (function(){
-  function scrollBottom(force=false){
+  function scrollChatToBottom(force=false){
     const box = document.getElementById('chatBox');
     if (!box) return;
     const nearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 120;
     if (force || nearBottom) box.scrollTop = box.scrollHeight;
   }
-
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-
   window.addEventListener('load', function(){
-    scrollBottom(true);
-    setTimeout(() => scrollBottom(true), 50);
-    setTimeout(() => scrollBottom(true), 200);
-  });
-
-  document.getElementById('chatForm').addEventListener('submit', function(e){
-    const msg = (document.getElementById('chatInput').value || '').trim();
-    const file = document.querySelector('input[type="file"]').files.length;
-    if (!msg && !file) {
-      e.preventDefault();
-      alert('Message cannot be empty (add text or attachment).');
-    }
+    scrollChatToBottom(true);
+    setTimeout(() => scrollChatToBottom(true), 50);
+    setTimeout(() => scrollChatToBottom(true), 200);
   });
 })();
 </script>
-
-<script src="admin/js/jquery.min.js"></script>
-<script src="admin/js/bootstrap.min.js"></script>
 </body>
 </html>

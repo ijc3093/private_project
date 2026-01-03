@@ -16,11 +16,29 @@ $msg = '';
 $error = '';
 
 // ------------------------------------
+// Helper: generate friend code XXXX-XXXX-XXXX
+// ------------------------------------
+function generateFriendCode(): string {
+    $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // avoid confusing chars (I,O,1,0)
+    $make = function(int $n) use ($chars) {
+        $out = '';
+        for ($i=0; $i<$n; $i++) {
+            $out .= $chars[random_int(0, strlen($chars)-1)];
+        }
+        return $out;
+    };
+    return $make(4) . '-' . $make(4) . '-' . $make(4);
+}
+
+// ------------------------------------
 // LOAD USER DATA (by session email)
 // ------------------------------------
 $sessionEmail = $_SESSION['user_login'] ?? '';
 
-$sql = "SELECT id, name, email, mobile, designation, image_type FROM users WHERE email = :email LIMIT 1";
+$sql = "SELECT id, name, email, mobile, designation, image_type, friend_code
+        FROM users
+        WHERE email = :email
+        LIMIT 1";
 $query = $dbh->prepare($sql);
 $query->execute([':email' => $sessionEmail]);
 $result = $query->fetch(PDO::FETCH_OBJ);
@@ -29,6 +47,35 @@ if (!$result) {
     session_destroy();
     header('location:index.php');
     exit;
+}
+
+// ------------------------------------
+// ✅ Ensure Friend Code exists
+// ------------------------------------
+if (empty($result->friend_code)) {
+    try {
+        // Try a few times in case of UNIQUE collision
+        for ($try=0; $try<5; $try++) {
+            $code = generateFriendCode();
+
+            // Ensure not already taken
+            $chk = $dbh->prepare("SELECT id FROM users WHERE friend_code = :c LIMIT 1");
+            $chk->execute([':c' => $code]);
+            if ($chk->fetchColumn()) continue;
+
+            // Save it
+            $updCode = $dbh->prepare("UPDATE users SET friend_code = :c WHERE id = :id LIMIT 1");
+            $updCode->execute([
+                ':c'  => $code,
+                ':id' => (int)$result->id
+            ]);
+
+            $result->friend_code = $code;
+            break;
+        }
+    } catch (Throwable $e) {
+        // If this fails, profile still loads (just no code)
+    }
 }
 
 // ------------------------------------
@@ -59,12 +106,12 @@ if (isset($_POST['submit'])) {
     // ---------------------------------------
     // ✅ DB AVATAR UPLOAD (BLOB)
     // ---------------------------------------
-    if (!empty($_FILES['image']['name'])) {
-    $allowedTypes = ['image/jpeg','image/png','image/jpg'];
-    $mime = mime_content_type($_FILES['image']['tmp_name']);
+    if ($error === '' && !empty($_FILES['image']['name'])) {
+        $allowedTypes = ['image/jpeg','image/png','image/jpg'];
+        $mime = mime_content_type($_FILES['image']['tmp_name']);
 
-    if (!in_array($mime, $allowedTypes, true)) {
-        $error = "Image must be JPG or PNG.";
+        if (!in_array($mime, $allowedTypes, true)) {
+            $error = "Image must be JPG or PNG.";
         } else {
             $blob = file_get_contents($_FILES['image']['tmp_name']);
             $type = $mime;
@@ -73,6 +120,7 @@ if (isset($_POST['submit'])) {
                 UPDATE users
                 SET image_blob = :b, image_type = :t
                 WHERE id = :id
+                LIMIT 1
             ");
             $updImg->execute([
                 ':b'  => $blob,
@@ -81,7 +129,6 @@ if (isset($_POST['submit'])) {
             ]);
         }
     }
-
 
     // ---------------------------------------
     // ✅ Update user fields
@@ -108,7 +155,7 @@ if (isset($_POST['submit'])) {
         if ($ok) {
 
             // reload user record
-            $query = $dbh->prepare("SELECT id, name, email, mobile, designation, image_type FROM users WHERE id = :id LIMIT 1");
+            $query = $dbh->prepare("SELECT id, name, email, mobile, designation, image_type, friend_code FROM users WHERE id = :id LIMIT 1");
             $query->execute([':id' => (int)$result->id]);
             $result = $query->fetch(PDO::FETCH_OBJ);
 
@@ -117,7 +164,6 @@ if (isset($_POST['submit'])) {
                 'id'    => (int)$result->id,
                 'email' => (string)$result->email,
                 'name'  => (string)$result->name,
-                // keep image key but DB avatar does not depend on it anymore
                 'image' => 'db'
             ]);
 
@@ -155,6 +201,23 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1') {
 <style>
 .errorWrap { padding:10px; background:#dd3d36; color:#fff; margin-bottom:15px; }
 .succWrap  { padding:10px; background:#5cb85c; color:#fff; margin-bottom:15px; }
+
+.friend-code-box{
+  background:#f7f7f7;
+  border:1px solid #ddd;
+  padding:12px;
+  border-radius:8px;
+  margin:10px 0 18px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+.friend-code{
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:1px;
+}
 </style>
 </head>
 
@@ -168,22 +231,34 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1') {
 <div class="container-fluid">
 <div class="row">
 <div class="col-md-12">
-<!-- <h2 class="page-title">My Profile</h2> -->
 
 <div class="panel panel-default">
 <div class="panel-heading">My Profile - <?php echo htmlentities($_SESSION['user_login']); ?></div>
 
 <?php if($error): ?>
-<div class="errorWrap"><strong>ERROR:</strong> <?php echo htmlentities($error); ?></div>
+  <div class="errorWrap"><strong>ERROR:</strong> <?php echo htmlentities($error); ?></div>
 <?php elseif($msg): ?>
-<div class="succWrap"><strong>SUCCESS:</strong> <?php echo htmlentities($msg); ?></div>
+  <div class="succWrap"><strong>SUCCESS:</strong> <?php echo htmlentities($msg); ?></div>
 <?php endif; ?>
 
 <div class="panel-body">
+
+  <!-- ✅ Friend Code -->
+  <div class="friend-code-box">
+    <div>
+      <div style="font-weight:700;margin-bottom:4px;">Your Friend Code</div>
+      <div class="friend-code"><?php echo htmlentities($result->friend_code ?? ''); ?></div>
+      <small class="text-muted">Share this code with someone you meet in person.</small>
+    </div>
+
+    <button type="button" class="btn btn-default" id="copyFriendCode">
+      <i class="fa fa-copy"></i> Copy
+    </button>
+  </div>
+
 <form method="post" class="form-horizontal" enctype="multipart/form-data">
 
 <div class="form-group text-center">
-    <!-- ✅ SHOW AVATAR FROM DB -->
     <img
         src="avatar.php?ts=<?php echo time(); ?>"
         style="width:200px;height:200px;border-radius:50%;margin:10px;object-fit:cover;border:1px solid #ddd;"
@@ -242,6 +317,23 @@ if (isset($_GET['updated']) && $_GET['updated'] == '1') {
 <script src="js/bootstrap.min.js"></script>
 <script>
 setTimeout(() => $('.succWrap').slideUp('slow'), 3000);
+
+document.getElementById('copyFriendCode')?.addEventListener('click', function(){
+  const code = "<?php echo addslashes((string)($result->friend_code ?? '')); ?>";
+  if (!code) return alert('No friend code available.');
+  navigator.clipboard.writeText(code).then(function(){
+    alert('Friend code copied!');
+  }).catch(function(){
+    // fallback
+    const t = document.createElement('textarea');
+    t.value = code;
+    document.body.appendChild(t);
+    t.select();
+    document.execCommand('copy');
+    document.body.removeChild(t);
+    alert('Friend code copied!');
+  });
+});
 </script>
 </body>
 </html>

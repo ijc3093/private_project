@@ -2,24 +2,25 @@
 require_once __DIR__ . '/../includes/session_user.php';
 requireUserLogin();
 
-header('Content-Type: application/json');
-
+require_once __DIR__ . '/../includes/identity_user.php';
 require_once __DIR__ . '/../admin/controller.php';
+
+header('Content-Type: application/json; charset=utf-8');
 
 try {
     $controller = new Controller();
     $dbh = $controller->pdo();
 
-    $email = $_SESSION['user_login'];
+    $email = myUserEmail();
 
-    $stmt = $dbh->prepare("
-        UPDATE notification
-        SET is_read = 1, read_at = NOW()
-        WHERE notireceiver = :email AND is_read = 0
+    $st = $dbh->prepare("
+      UPDATE notification
+      SET is_read = 1, read_at = NOW()
+      WHERE notireceiver = :e AND is_read = 0
     ");
-    $stmt->execute([':email' => $email]);
+    $st->execute([':e'=>$email]);
 
-    echo json_encode(['ok' => true, 'updated' => $stmt->rowCount()]);
+    echo json_encode(['ok'=>true,'updated'=>$st->rowCount()]);
 } catch (Throwable $e) {
-    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    echo json_encode(['ok'=>false,'error'=>'Server error']);
 }

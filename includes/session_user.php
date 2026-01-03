@@ -27,11 +27,7 @@ function sendNoCacheHeadersUser(): void
 function requireUserLogin(): void
 {
     sendNoCacheHeadersUser();
-
-    if (
-        empty($_SESSION['user_login']) ||
-        empty($_SESSION['user_id'])
-    ) {
+    if (empty($_SESSION['user_login'])) {
         header("Location: index.php");
         exit;
     }
@@ -49,14 +45,14 @@ function setUserSession(array $user): void
     session_regenerate_id(true);
 
     $_SESSION['user_login'] = $user['email'] ?? '';          // user email
-    $_SESSION['user_id']    = (int)($user['id'] ?? 0);
+    $_SESSION['user_id']    = (int)$user['id'];
     $_SESSION['user_name']  = $user['name'] ?? '';
     $_SESSION['user_image'] = $user['image'] ?? 'default.jpg';
 
     // ✅ NEW: store user role (needed for same-role chat)
     // If your users table doesn't have role yet, add it (INT DEFAULT 4 or whatever you want).
     //$_SESSION['userRole']   = (int)($user['role'] ?? 0);
-    $_SESSION['userRole'] = (int)($user['role'] ?? 4);
+    $_SESSION['user_role']  = (int)($user['role'] ?? 0); // ✅ add this
 
 
     // Optional: store status if you want to block inactive users
@@ -68,25 +64,14 @@ function setUserSession(array $user): void
  */
 function clearUserSession(): void
 {
-    sendNoCacheHeadersUser();
-
     $_SESSION = [];
-
     if (ini_get("session.use_cookies")) {
         $params = session_get_cookie_params();
-        setcookie(
-            session_name(),
-            '',
-            time() - 42000,
-            $params["path"],
-            $params["domain"],
-            $params["secure"],
-            $params["httponly"]
-        );
+        setcookie(session_name(), '', time() - 42000, $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
     }
-
     session_destroy();
 }
+
 
 /**
  * Helpers (optional, but very useful)
