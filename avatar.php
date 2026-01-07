@@ -11,7 +11,7 @@ $dbh = $controller->pdo();
 $userEmail = $_SESSION['user_login'] ?? '';
 if ($userEmail === '') {
     // not logged in -> show default image
-    $default = __DIR__ . '/images/default.jpg';
+    $default = __DIR__ . '/images/profile.jpg';
     header("Content-Type: image/jpeg");
     if (is_file($default)) readfile($default);
     exit;
@@ -22,7 +22,7 @@ $stmt->execute([':e' => $userEmail]);
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$row || empty($row['image_blob'])) {
-    $default = __DIR__ . '/images/default.jpg';
+    $default = __DIR__ . '/images/profile.jpg';
     header("Content-Type: image/jpeg");
     if (is_file($default)) readfile($default);
     exit;

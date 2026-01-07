@@ -3,7 +3,6 @@
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
-require_once __DIR__ . '/includes/identity_user.php';
 require_once __DIR__ . '/admin/controller.php';
 
 error_reporting(E_ALL);
@@ -12,8 +11,15 @@ ini_set('display_errors', '1');
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$meId    = userId();
-$meEmail = userEmail();
+// ✅ Use the correct helper names from session_user.php
+$meId    = myUserId();
+$meEmail = myUserEmail();
+
+if ($meId <= 0 || $meEmail === '') {
+    clearUserSession();
+    header("Location: index.php");
+    exit;
+}
 
 $msg = '';
 $error = '';
@@ -21,17 +27,28 @@ $error = '';
 $prefillTo = trim($_GET['to'] ?? '');
 
 /**
- * Resolve To value:
- * - "Admin" or "support" => Admin chat
- * - friend_code => get users.email
- * - email => use directly (only if user exists and active)
+ * ✅ Resolve To value (USER-ONLY CHAT)
+ * Allowed input:
+ * - friend_code => users.email
+ * - username    => users.email
+ * - email       => users.email
+ *
+ * ❌ Admin/support is NOT allowed anymore
  */
-function resolveRecipient(PDO $dbh, string $to): array {
+function resolveRecipient(PDO $dbh, string $to, int $myRole, string $meEmail): array
+{
     $to = trim($to);
 
-    // Support Center shortcuts
-    if (strcasecmp($to, 'admin') === 0 || strcasecmp($to, 'support') === 0 || strcasecmp($to, 'support center') === 0) {
-        return ['mode' => 'admin', 'email' => 'Admin', 'label' => 'Support Center'];
+    if ($to === '') {
+        return ['mode' => 'error', 'error' => 'Recipient is required.'];
+    }
+
+    // ❌ Block Admin/support keywords
+    $blocked = ['admin', 'support', 'support center'];
+    foreach ($blocked as $b) {
+        if (strcasecmp($to, $b) === 0) {
+            return ['mode' => 'error', 'error' => 'Users cannot message Admin/Support. Please message a user only.'];
+        }
     }
 
     // If looks like email
@@ -40,50 +57,80 @@ function resolveRecipient(PDO $dbh, string $to): array {
             return ['mode' => 'error', 'error' => 'Invalid email format.'];
         }
 
-        // must be a real active user OR active admin email
-        $stA = $dbh->prepare("SELECT idadmin FROM admin WHERE email = :e AND status=1 LIMIT 1");
-        $stA->execute([':e' => $to]);
-        if ($stA->fetchColumn()) {
-            return ['mode' => 'adminEmail', 'email' => $to, 'label' => 'Support Center'];
-        }
-
-        $stU = $dbh->prepare("SELECT id, email, status FROM users WHERE email = :e LIMIT 1");
-        $stU->execute([':e' => $to]);
-        $u = $stU->fetch(PDO::FETCH_ASSOC);
+        $st = $dbh->prepare("SELECT id, email, role, status FROM users WHERE email = :e LIMIT 1");
+        $st->execute([':e' => $to]);
+        $u = $st->fetch(PDO::FETCH_ASSOC);
 
         if (!$u) return ['mode' => 'error', 'error' => 'User email not found.'];
         if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
 
+        // Optional: enforce same-role chat only
+        if ((int)$u['role'] !== $myRole) {
+            return ['mode' => 'error', 'error' => 'You can only chat with users in your same role.'];
+        }
+
+        if (strcasecmp($u['email'], $meEmail) === 0) {
+            return ['mode' => 'error', 'error' => 'You cannot message yourself.'];
+        }
+
         return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['email']];
     }
 
-    // Friend code
-    $st = $dbh->prepare("SELECT id, email, friend_code, status FROM users WHERE friend_code = :fc LIMIT 1");
+    // Try friend_code
+    $st = $dbh->prepare("SELECT id, email, friend_code, role, status FROM users WHERE friend_code = :fc LIMIT 1");
     $st->execute([':fc' => $to]);
     $u = $st->fetch(PDO::FETCH_ASSOC);
 
-    if (!$u) return ['mode' => 'error', 'error' => 'Friend code not found.'];
-    if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
+    if ($u) {
+        if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
 
-    return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['friend_code'] ?: $u['email']];
+        if ((int)$u['role'] !== $myRole) {
+            return ['mode' => 'error', 'error' => 'You can only chat with users in your same role.'];
+        }
+
+        if (strcasecmp($u['email'], $meEmail) === 0) {
+            return ['mode' => 'error', 'error' => 'You cannot message yourself.'];
+        }
+
+        return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['friend_code'] ?: $u['email']];
+    }
+
+    // Try username (optional)
+    $st2 = $dbh->prepare("SELECT id, email, username, role, status FROM users WHERE username = :u LIMIT 1");
+    $st2->execute([':u' => $to]);
+    $u2 = $st2->fetch(PDO::FETCH_ASSOC);
+
+    if ($u2) {
+        if ((int)$u2['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
+
+        if ((int)$u2['role'] !== $myRole) {
+            return ['mode' => 'error', 'error' => 'You can only chat with users in your same role.'];
+        }
+
+        if (strcasecmp($u2['email'], $meEmail) === 0) {
+            return ['mode' => 'error', 'error' => 'You cannot message yourself.'];
+        }
+
+        return ['mode' => 'user', 'email' => $u2['email'], 'label' => $u2['username'] ?: $u2['email']];
+    }
+
+    return ['mode' => 'error', 'error' => 'Recipient not found (use friend code, username, or email).'];
 }
+
+$myRole = myUserRoleId();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $to = trim($_POST['to'] ?? '');
-    if ($to === '') {
-        $error = "Please enter To: friend code or email.";
+
+    $res = resolveRecipient($dbh, $to, $myRole, $meEmail);
+
+    if (($res['mode'] ?? '') === 'error') {
+        $error = $res['error'] ?? 'Invalid recipient.';
     } else {
-        $res = resolveRecipient($dbh, $to);
-        if (($res['mode'] ?? '') === 'error') {
-            $error = $res['error'] ?? 'Invalid recipient.';
-        } else {
-            // For chat page we pass reply as:
-            // - 'Admin' (support)
-            // - or peer email (user or admin email)
-            $reply = ($res['mode'] === 'admin' || $res['mode'] === 'adminEmail') ? 'Admin' : $res['email'];
-            header("Location: sendreply_user.php?reply=" . urlencode($reply));
-            exit;
-        }
+        // ✅ Always redirect with peer email (user-user only)
+        $reply = $res['email'];
+        header("Location: user_sendreply.php?reply=" . urlencode($reply));
+        exit;
     }
 }
 ?>
@@ -124,10 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label>To</label>
         <input type="text" name="to" class="form-control"
                value="<?php echo htmlentities($prefillTo); ?>"
-               placeholder="Friend code (ABCD-EFGH-IJKL)" required>
+               placeholder="Friend code, username, or email" required>
+
         <div class="hint" style="margin-top:8px;">
-          Tip: Add friends using <a href="add_contact.php">Add Contact</a>.  
-          For support, type <b>Admin</b> or <b>Support</b>.
+          Allowed: <b>Friend code</b>, <b>Username</b>, or <b>Email</b> (user only).<br>
+          Admin/Support messaging is disabled.
         </div>
       </div>
 

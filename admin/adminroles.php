@@ -32,7 +32,9 @@ if (!$isAdmin) {
 $sql = "
     SELECT 
         a.idadmin,
+        a.fullname,
         a.username,
+        a.friend_code,
         a.email,
         a.image,
         a.status,
@@ -96,8 +98,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
                                 <tr>
                                     <th>#</th>
                                     <th>Photo</th>
-                                    <th>Name</th>
+                                    <th>Full Name</th>
+                                    <th>Username</th>
                                     <th>Email</th>
+                                    <th>Friend Code</th>
                                     <th>Role</th>
                                     <th>Status</th>
                                     <th>Created</th>
@@ -109,7 +113,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
                             $cnt = 1;
                             foreach ($rows as $row):
                                 // Image is stored in admin/images/ (your profile upload uses admin/images/)
-                                $img = !empty($row->image) ? $row->image : 'default.jpg';
+                                $img = !empty($row->image) ? $row->image : 'profile.jpg';
                                 $roleName = $row->role_name ?: 'Unknown';
                                 $statusText = ((int)$row->status === 1) ? 'Active' : 'Inactive';
 
@@ -125,8 +129,10 @@ $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
                                     <td class="nowrap">
                                         <img class="avatar" src="images/<?php echo htmlentities($img); ?>" alt="avatar">
                                     </td>
+                                    <td><?php echo htmlentities($row->fullname); ?></td>
                                     <td><?php echo htmlentities($row->username); ?></td>
                                     <td><?php echo htmlentities($row->email); ?></td>
+                                    <td><?php echo htmlentities($row->friend_code); ?></td>
                                     <td class="nowrap">
                                         <span class="label <?php echo $badgeClass; ?> badge-role">
                                             <?php echo htmlentities($roleName); ?>
@@ -163,6 +169,16 @@ $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
 <script src="js/main.js"></script>
 
 <script>
+
+// ✅ DataTables scrolling body only (header + search stay fixed)
+const dt = $('#zctb').DataTable({
+pageLength: 25,
+lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+order: [[4, 'desc']], // sort by Date & Time column (index 4)
+scrollY: '55vh',      // ✅ body scroll height (change if you want)
+scrollCollapse: true
+});
+
 $(document).ready(function(){
     $('#accountsTable').DataTable({
         responsive: false,

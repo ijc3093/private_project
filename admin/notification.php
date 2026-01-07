@@ -1,4 +1,5 @@
 <?php
+// /admin/notification.php
 require_once __DIR__ . '/includes/session_admin.php';
 requireAdminLogin();
 
@@ -6,7 +7,7 @@ require_once __DIR__ . '/includes/identity.php';
 require_once __DIR__ . '/controller.php';
 
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', '1');
 
 $controller = new Controller();
 $dbh = $controller->pdo();
@@ -14,128 +15,125 @@ $dbh = $controller->pdo();
 $msg = '';
 $error = '';
 
-$keys = myNotificationReceiverKeys();
-if (empty($keys)) die("Session missing username.");
+/**
+ * Receiver keys based on role:
+ * - Admin (role 1)  => can see Admin + Manager + Gospel + Staff notifications
+ * - Manager (role 2)=> can see Manager notifications only
+ * - Gospel (role 3) => can see Gospel notifications only
+ * - Staff (role 4)  => can see Staff notifications only
+ */
+$receiverKeys = myNotificationReceiverKeys();
 
-$ph = implode(',', array_fill(0, count($keys), '?'));
+/**
+ * Hard safety: allow only known receiver labels
+ */
+$allowedReceivers = ['Admin', 'Manager', 'Gospel', 'Staff'];
+$receiverKeys = array_values(array_intersect((array)$receiverKeys, $allowedReceivers));
+
+if (empty($receiverKeys)) {
+    die("Invalid session receiver keys.");
+}
 
 // FILTER
-$view = $_GET['view'] ?? 'all';
-$view = in_array($view, ['all','unread','read'], true) ? $view : 'all';
+$filter = $_GET['filter'] ?? 'all'; // all | unread | read
+$filter = in_array($filter, ['all','unread','read'], true) ? $filter : 'all';
 
-$whereRead = '';
-if ($view === 'unread') $whereRead = " AND is_read = 0 ";
-if ($view === 'read')   $whereRead = " AND is_read = 1 ";
+$whereRead = "";
+if ($filter === 'unread') $whereRead = " AND is_read = 0 ";
+if ($filter === 'read')   $whereRead = " AND is_read = 1 ";
 
-// MARK ONE READ
-if (isset($_GET['mark']) && $_GET['mark'] !== '') {
-    $id = (int)$_GET['mark'];
-    try {
-        $sql = "UPDATE notification SET is_read=1, read_at=NOW()
-                WHERE id = ? AND notireceiver IN ($ph)";
-        $st = $dbh->prepare($sql);
-        $st->execute(array_merge([$id], $keys));
-        header("Location: notification.php?view=" . urlencode($view) . "&msg=readone");
-        exit;
-    } catch (PDOException $e) {
-        $error = $e->getMessage();
+// build IN (?, ?, ?)
+$ph = implode(',', array_fill(0, count($receiverKeys), '?'));
+
+// DELETE ONE (only if it belongs to allowed receivers)
+if (isset($_GET['del'])) {
+    $id = (int)($_GET['del'] ?? 0);
+    if ($id > 0) {
+        $stmt = $dbh->prepare("DELETE FROM notification WHERE id = ? AND notireceiver IN ($ph)");
+        $stmt->execute(array_merge([$id], $receiverKeys));
+        $msg = "Notification deleted.";
     }
 }
 
-// MARK ALL READ
-if (isset($_POST['mark_all_read'])) {
-    try {
-        $sql = "UPDATE notification SET is_read=1, read_at=NOW()
-                WHERE notireceiver IN ($ph) AND is_read=0";
-        $st = $dbh->prepare($sql);
-        $st->execute($keys);
-        header("Location: notification.php?view=" . urlencode($view) . "&msg=readall");
-        exit;
-    } catch (PDOException $e) {
-        $error = $e->getMessage();
-    }
-}
-
-// DELETE ONE
-if (isset($_GET['del']) && $_GET['del'] !== '') {
-    $id = (int)$_GET['del'];
-    try {
-        $sql = "DELETE FROM notification WHERE id = ? AND notireceiver IN ($ph)";
-        $st = $dbh->prepare($sql);
-        $st->execute(array_merge([$id], $keys));
-        header("Location: notification.php?view=" . urlencode($view) . "&msg=deleted");
-        exit;
-    } catch (PDOException $e) {
-        $error = $e->getMessage();
-    }
-}
-
-// DELETE ALL
+// DELETE ALL (only for allowed receivers)
 if (isset($_POST['delete_all'])) {
-    try {
-        $sql = "DELETE FROM notification WHERE notireceiver IN ($ph)";
-        $st = $dbh->prepare($sql);
-        $st->execute($keys);
-        header("Location: notification.php?view=" . urlencode($view) . "&msg=deletedall");
-        exit;
-    } catch (PDOException $e) {
-        $error = $e->getMessage();
-    }
+    $stmt = $dbh->prepare("DELETE FROM notification WHERE notireceiver IN ($ph)");
+    $stmt->execute($receiverKeys);
+    $msg = "All notifications deleted.";
 }
 
-if (($_GET['msg'] ?? '') === 'readone')    $msg = "Notification marked as read.";
-if (($_GET['msg'] ?? '') === 'readall')    $msg = "All notifications marked as read.";
-if (($_GET['msg'] ?? '') === 'deleted')    $msg = "Notification deleted.";
-if (($_GET['msg'] ?? '') === 'deletedall') $msg = "All notifications deleted.";
+// LOAD COUNTS (unread badge)
+$stmtC = $dbh->prepare("SELECT COUNT(*) FROM notification WHERE notireceiver IN ($ph) AND is_read = 0");
+$stmtC->execute($receiverKeys);
+$unreadCount = (int)$stmtC->fetchColumn();
 
-// RESULTS
-$results = [];
-try {
-    $sql = "SELECT id, notiuser, notitype, created_at, is_read
-            FROM notification
-            WHERE notireceiver IN ($ph)
-            $whereRead
-            ORDER BY created_at DESC";
-    $st = $dbh->prepare($sql);
-    $st->execute($keys);
-    $results = $st->fetchAll(PDO::FETCH_OBJ);
-} catch (PDOException $e) {
-    $error = $e->getMessage();
-}
-
-// COUNTS
-$countAll = $countUnread = $countRead = 0;
-try {
-    $st = $dbh->prepare("SELECT COUNT(*) FROM notification WHERE notireceiver IN ($ph)");
-    $st->execute($keys);
-    $countAll = (int)$st->fetchColumn();
-
-    $st = $dbh->prepare("SELECT COUNT(*) FROM notification WHERE notireceiver IN ($ph) AND is_read=0");
-    $st->execute($keys);
-    $countUnread = (int)$st->fetchColumn();
-
-    $st = $dbh->prepare("SELECT COUNT(*) FROM notification WHERE notireceiver IN ($ph) AND is_read=1");
-    $st->execute($keys);
-    $countRead = (int)$st->fetchColumn();
-} catch (Throwable $e) {}
+// LOAD NOTIFICATIONS
+$stmt = $dbh->prepare("
+    SELECT id, notiuser, notireceiver, notitype, created_at, is_read
+    FROM notification
+    WHERE notireceiver IN ($ph)
+    $whereRead
+    ORDER BY created_at DESC
+");
+$stmt->execute($receiverKeys);
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 function fmt_dt($dt) {
     return $dt ? date('M d, Y h:i A', strtotime($dt)) : 'N/A';
 }
-
-$title = isAdmin() ? 'Admin Notifications' : 'My Notifications';
+function h($s): string {
+    return htmlentities((string)$s);
+}
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Notification List</title>
+  <title>Notifications</title>
 
   <link rel="stylesheet" href="css/font-awesome.min.css">
   <link rel="stylesheet" href="css/bootstrap.min.css">
   <link rel="stylesheet" href="css/dataTables.bootstrap.min.css">
   <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    .succWrap{ padding:10px; background:#5cb85c; color:#fff; margin:0 0 15px; }
+    .errorWrap{ padding:10px; background:#dd3d36; color:#fff; margin:0 0 15px; }
+    .unread { font-weight:700; }
+    .action-icons a { margin-right:10px; font-size:16px; }
+    .top-actions { display:flex; gap:10px; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; }
+    .filter-btns a { margin-right:8px; }
+    .badge-red { background:red;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px; }
+
+    /* Optional sticky sidebar */
+    .ts-sidebar{ position: sticky; top: 70px; height: calc(100vh - 70px); overflow: auto; }
+
+    /* ✅ DataTables scroll: keep header + search fixed and scroll only body */
+    div.dataTables_wrapper div.dataTables_filter,
+    div.dataTables_wrapper div.dataTables_length{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #fff;
+      padding: 8px 6px;
+      border-bottom: 1px solid #eee;
+    }
+
+    /* DataTables creates scroll containers when scrollY is enabled */
+    div.dataTables_scrollHead thead th{
+      background: #fff !important;
+    }
+
+    /* Make scroll body nicer */
+    div.dataTables_scrollBody{
+      border: 1px solid #ddd;
+      border-top: none;
+    }
+
+    #zctb{ width:100% !important; }
+  </style>
 </head>
 <body>
 
@@ -146,88 +144,83 @@ $title = isAdmin() ? 'Admin Notifications' : 'My Notifications';
 <div class="content-wrapper">
 <div class="container-fluid">
 
-
-  <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlentities($error); ?></div><?php endif; ?>
-  <?php if ($msg): ?><div class="alert alert-success"><?php echo htmlentities($msg); ?></div><?php endif; ?>
+  <?php if ($error): ?><div class="errorWrap"><?php echo h($error); ?></div><?php endif; ?>
+  <?php if ($msg): ?><div class="succWrap"><?php echo h($msg); ?></div><?php endif; ?>
 
   <div class="panel panel-default">
     <div class="panel-heading">Notification List</div>
     <div class="panel-body">
 
-      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-        <div>
-          <a class="btn btn-default btn-sm <?php echo ($view==='all')?'btn-primary':''; ?>" href="notification.php?view=all">All (<?php echo $countAll; ?>)</a>
-          <a class="btn btn-default btn-sm <?php echo ($view==='unread')?'btn-primary':''; ?>" href="notification.php?view=unread">Unread (<?php echo $countUnread; ?>)</a>
-          <a class="btn btn-default btn-sm <?php echo ($view==='read')?'btn-primary':''; ?>" href="notification.php?view=read">Read (<?php echo $countRead; ?>)</a>
+      <div class="top-actions">
+        <div class="filter-btns">
+          <a class="btn btn-default btn-sm" href="notification.php?filter=all">All</a>
+          <a class="btn btn-warning btn-sm" href="notification.php?filter=unread">
+            Unread
+            <?php if ($unreadCount > 0): ?>
+              <span class="badge-red"><?php echo (int)$unreadCount; ?></span>
+            <?php endif; ?>
+          </a>
+          <a class="btn btn-success btn-sm" href="notification.php?filter=read">Read</a>
         </div>
 
-        <div style="display:flex;gap:8px;">
-          <form method="post" style="margin:0;">
-            <button class="btn btn-info btn-sm" name="mark_all_read" type="submit"
-              onclick="return confirm('Mark ALL as read?');"
-              <?php echo ($countUnread===0) ? 'disabled' : ''; ?>>
-              <i class="fa fa-check"></i> Mark All Read
-            </button>
-          </form>
+        <div>
+          <button class="btn btn-info btn-sm" id="btnMarkAll" type="button" <?php echo empty($rows) ? 'disabled' : ''; ?>>
+            <i class="fa fa-check"></i> Mark All Read
+          </button>
 
-          <form method="post" style="margin:0;">
-            <button class="btn btn-danger btn-sm" name="delete_all" type="submit"
-              onclick="return confirm('Delete ALL notifications?');"
-              <?php echo ($countAll===0) ? 'disabled' : ''; ?>>
+          <form method="post" style="display:inline;">
+            <button class="btn btn-danger btn-sm" type="submit" name="delete_all"
+              onclick="return confirm('Delete ALL notifications you can see?');"
+              <?php echo empty($rows) ? 'disabled' : ''; ?>>
               <i class="fa fa-trash"></i> Delete All
             </button>
           </form>
         </div>
       </div>
 
-      <table id="notiTable" class="table table-striped table-bordered">
+      <table id="zctb" class="table table-striped table-bordered">
         <thead>
           <tr>
             <th>#</th>
             <th>From</th>
-            <th>Type</th>
-            <th>Date</th>
+            <th>Notification</th>
+            <th>To</th>
+            <th>Date &amp; Time</th>
             <th>Status</th>
-            <th style="width:140px;">Action</th>
+            <th style="width:110px;">Action</th>
           </tr>
         </thead>
         <tbody>
-        <?php $i=1; foreach ($results as $r): ?>
-          <tr class="<?php echo ((int)$r->is_read===0) ? 'unread-row' : ''; ?>">
-            <td><?php echo $i++; ?></td>
-            <td><?php echo htmlentities($r->notiuser); ?></td>
-            <td><?php echo htmlentities($r->notitype); ?></td>
-            <td><?php echo htmlentities(fmt_dt($r->created_at)); ?></td>
-            <td>
-              <?php if ((int)$r->is_read===1): ?>
-                <span class="label label-success">Read</span>
-              <?php else: ?>
-                <span class="label label-warning">Unread</span>
-              <?php endif; ?>
-            </td>
-            <td>
-              <?php if ((int)$r->is_read===0): ?>
-                <a class="btn btn-success btn-xs"
-                   href="notification.php?view=<?php echo urlencode($view); ?>&mark=<?php echo (int)$r->id; ?>"
-                   onclick="return confirm('Mark as read?');">
-                   <i class="fa fa-check"></i>
-                </a>
-              <?php endif; ?>
+          <?php $i=1; foreach ($rows as $r): ?>
+            <tr class="<?php echo ((int)$r['is_read'] === 0) ? 'unread' : ''; ?>">
+              <td><?php echo $i++; ?></td>
+              <td><?php echo h($r['notiuser'] ?? ''); ?></td>
+              <td><?php echo h($r['notitype'] ?? ''); ?></td>
+              <td><?php echo h($r['notireceiver'] ?? ''); ?></td>
+              <td><?php echo h(fmt_dt($r['created_at'] ?? null)); ?></td>
+              <td>
+                <?php if ((int)$r['is_read'] === 1): ?>
+                  <span class="label label-success">Read</span>
+                <?php else: ?>
+                  <span class="label label-warning">Unread</span>
+                <?php endif; ?>
+              </td>
+              <td class="action-icons">
+                <?php if ((int)$r['is_read'] === 0): ?>
+                  <a href="#" class="markReadBtn" data-id="<?php echo (int)$r['id']; ?>" title="Mark Read">
+                    <i class="fa fa-check text-success"></i>
+                  </a>
+                <?php endif; ?>
 
-              <a class="btn btn-danger btn-xs"
-                 href="notification.php?view=<?php echo urlencode($view); ?>&del=<?php echo (int)$r->id; ?>"
-                 onclick="return confirm('Delete this notification?');">
-                 <i class="fa fa-trash"></i>
-              </a>
-            </td>
-          </tr>
-        <?php endforeach; ?>
+                <a href="notification.php?filter=<?php echo urlencode($filter); ?>&del=<?php echo (int)$r['id']; ?>"
+                  onclick="return confirm('Delete this notification?');" title="Delete">
+                  <i class="fa fa-trash text-danger"></i>
+                </a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
         </tbody>
       </table>
-
-      <?php if (empty($results)): ?>
-        <div class="alert alert-info" style="margin-top:12px;">No notifications found.</div>
-      <?php endif; ?>
 
     </div>
   </div>
@@ -240,11 +233,63 @@ $title = isAdmin() ? 'Admin Notifications' : 'My Notifications';
 <script src="js/bootstrap.min.js"></script>
 <script src="js/jquery.dataTables.min.js"></script>
 <script src="js/dataTables.bootstrap.min.js"></script>
+
 <script>
 $(function(){
-  $('#notiTable').DataTable({ pageLength: 10 });
+
+  // ✅ DataTables scrolling body only (header + search stay fixed)
+  const dt = $('#zctb').DataTable({
+    pageLength: 25,
+    lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+    order: [[4, 'desc']], // sort by Date & Time column (index 4)
+    scrollY: '55vh',      // ✅ body scroll height (change if you want)
+    scrollCollapse: true
+  });
+
+  // Mark ONE read
+  $(document).on('click', '.markReadBtn', function(e){
+    e.preventDefault();
+    const id = $(this).data('id');
+    if (!confirm('Mark this notification as read?')) return;
+
+    $.post('ajax/admin_mark_notification_read.php', { id: id }, function(resp){
+      if (resp && resp.ok) location.reload();
+      else alert(resp.error || 'Failed');
+    }, 'json').fail(function(){
+      alert('Request failed');
+    });
+  });
+
+  // Mark ALL read
+  $('#btnMarkAll').on('click', function(){
+    if (!confirm('Mark ALL notifications you can see as read?')) return;
+
+    $.post('ajax/admin_mark_all_notifications_read.php', {}, function(resp){
+      if (resp && resp.ok) location.reload();
+      else alert(resp.error || 'Failed');
+    }, 'json').fail(function(){
+      alert('Request failed');
+    });
+  });
+
+  // Auto-hide messages
+  setTimeout(function () {
+    const success = document.querySelector('.succWrap');
+    const error   = document.querySelector('.errorWrap');
+
+    if (success) {
+      success.style.transition = 'opacity 0.4s ease';
+      success.style.opacity = '0';
+      setTimeout(() => success.remove(), 400);
+    }
+    if (error) {
+      error.style.transition = 'opacity 0.4s ease';
+      error.style.opacity = '0';
+      setTimeout(() => error.remove(), 400);
+    }
+  }, 2500);
+
 });
 </script>
-
 </body>
 </html>

@@ -5,41 +5,19 @@ requireUserLogin();
 ?>
 <nav class="ts-sidebar">
   <ul class="ts-sidebar-menu">
-
     <li><a href="dashboard.php"><i class="fa fa-dashboard"></i> &nbsp;Dashboard</a></li>
     <li><a href="profile.php"><i class="fa fa-user"></i> &nbsp;My Profile</a></li>
-
     <!-- ✅ CHAT (User ↔ Admin + User ↔ User same-role) -->
-    <!-- <li>
-      <a href="user_feedback.php">
-        <i class="fa fa-comments"></i> &nbsp;Chat Inbox
-        <span id="chatBadgeSide" class="badge" style="display:none;background:red;margin-left:6px;">0</span>
-      </a>
-    </li> -->
-    <li><a href="user_feedback.php"><i class="fa fa-comments"></i> &nbsp;Messages</a></li>
-    <li><a href="compose.php"><i class="fa fa-envelope"></i> &nbsp;New Message</a></li>
+    <!-- <li><a href="user_feedback.php"><i class="fa fa-comments"></i> &nbsp;Chat Inbox<span id="chatBadgeSide" class="badge" style="display:none;background:red;margin-left:6px;">0</span></a></li> -->
+    <!-- <li><a href="user_feedback.php"><i class="fa fa-comments"></i> &nbsp;Messages</a></li>
+    <li><a href="compose.php"><i class="fa fa-envelope"></i> &nbsp;New Message</a></li> -->
     <li><a href="contact_requests.php"><i class="fa fa-user-plus"></i> &nbsp;Requests</a></li>
-    <li><a href="support.php"><i class="fa fa-life-ring"></i> &nbsp;Support</a></li>
+    <li><a href="support.php"><i class="fa fa-life-ring"></i> &nbsp;Center Support</a></li>
     <li><a href="contacts.php"><i class="fa fa-users"></i> &nbsp;Contacts</a></li>
-    <li><a href="add_contact.php"><i class="fa fa-user-plus"></i> &nbsp;Add Contact</a></li>
-
-
-
-    <!-- <li>
-      <a href="compose_user.php">
-        <i class="fa fa-pencil"></i> &nbsp;Start a chat
-      </a>
-    </li> -->
-
+    <!-- <li><a href="add_contact.php"><i class="fa fa-user-plus"></i> &nbsp;Add Contact</a></li> -->
+    <!-- <li><a href="compose_user.php"><i class="fa fa-pencil"></i> &nbsp;Start a chat</a></li> -->
     <!-- ✅ NOTIFICATIONS -->
-    <li>
-      <a href="notification.php">
-        <i class="fa fa-bell"></i> &nbsp;Notification List
-        <span id="notiBadgeSide" class="badge"
-              style="display:none;background:red;margin-left:6px;">0</span>
-      </a>
-    </li>
-
+    <!-- <li><a href="notification.php"><i class="fa fa-bell"></i> &nbsp;Notification List<span id="notiBadgeSide" class="badge"style="display:none;background:red;margin-left:6px;">0</span></a></li> -->
     <li><a href="logout.php"><i class="fa fa-sign-out"></i> &nbsp;Logout</a></li>
   </ul>
 </nav>

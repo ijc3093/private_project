@@ -1,4 +1,5 @@
 <?php
+// /Business_only3/admin/dashboard.php
 require_once __DIR__ . '/includes/session_admin.php';
 requireAdminLogin();
 
@@ -10,18 +11,39 @@ require_once __DIR__ . '/controller.php';
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-// ✅ Admin identity (from session_admin.php login)
-$adminLogin = $_SESSION['admin_login'];          // username/email
-$adminRole  = (int)($_SESSION['userRole'] ?? 0); // 1 Admin, 2 Manager, 3 Gospel, 4 Staff
+// ✅ Force password change gate (cannot be bypassed by typing dashboard URL)
+$adminId = (int)($_SESSION['admin_id'] ?? 0);
+if ($adminId <= 0) {
+    clearAdminSession();
+    header("Location: index.php");
+    exit;
+}
 
-// Optional: if you want Admin-only blocks
-$isAdmin = ($adminRole === 1);
+$stForce = $dbh->prepare("SELECT force_password_change, status FROM admin WHERE idadmin = :id LIMIT 1");
+$stForce->execute([':id' => $adminId]);
+$acc = $stForce->fetch(PDO::FETCH_ASSOC);
+
+if (!$acc || (int)$acc['status'] !== 1) {
+    clearAdminSession();
+    header("Location: index.php");
+    exit;
+}
+
+if ((int)$acc['force_password_change'] === 1) {
+    header("Location: change-password.php?force=1");
+    exit;
+}
+
+// ✅ Admin identity (from session_admin.php login)
+$adminLogin = (string)($_SESSION['admin_login'] ?? '');
+$adminRole  = (int)($_SESSION['userRole'] ?? 0); // 1 Admin, 2 Manager, 3 Gospel, 4 Staff
+$isAdmin    = ($adminRole === 1);
 
 // Counts
-$userCount = 0;
+$userCount     = 0;
 $feedbackCount = 0;
-$notiCount = 0;
-$deletedCount = 0;
+$notiCount     = 0;
+$deletedCount  = 0;
 
 try {
     if ($isAdmin) {
@@ -71,77 +93,71 @@ try {
 <div class="content-wrapper">
 <div class="container-fluid">
 
-    <!-- <h2 class="page-title">Dashboard</h2> -->
-
     <?php if (!empty($error)): ?>
         <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
     <?php endif; ?>
+
     <br/>
-        <div >
 
-            <!-- <div class="panel-heading">Dashboard</div><br/> -->
+    <div class="row">
 
-        
-                <div class="row">
-
-                    <?php if ($isAdmin): ?>
-                    <div class="col-md-3">
-                        <div class="panel panel-default">
-                            <div class="panel-body bk-primary text-light text-center">
-                                <div class="stat-panel-number h1"><?php echo $userCount; ?></div>
-                                <div class="stat-panel-title text-uppercase">Total Users</div>
-                            </div>
-                            <a href="userlist.php" class="block-anchor panel-footer text-center">
-                                Full Detail <i class="fa fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php if ($isAdmin): ?>
-                    <div class="col-md-3">
-                        <div class="panel panel-default">
-                            <div class="panel-body bk-success text-light text-center">
-                                <div class="stat-panel-number h1"><?php echo $feedbackCount; ?></div>
-                                <div class="stat-panel-title text-uppercase">Feedback</div>
-                            </div>
-                            <a href="feedback.php" class="block-anchor panel-footer text-center">
-                                Full Detail <i class="fa fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php if ($isAdmin): ?>
-                    <div class="col-md-3">
-                        <div class="panel panel-default">
-                            <div class="panel-body bk-danger text-light text-center">
-                                <div class="stat-panel-number h1"><?php echo $notiCount; ?></div>
-                                <div class="stat-panel-title text-uppercase">Notifications</div>
-                            </div>
-                            <a href="notification.php" class="block-anchor panel-footer text-center">
-                                Full Detail <i class="fa fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($isAdmin): ?>
-                    <div class="col-md-3">
-                        <div class="panel panel-default">
-                            <div class="panel-body bk-info text-light text-center">
-                                <div class="stat-panel-number h1"><?php echo $deletedCount; ?></div>
-                                <div class="stat-panel-title text-uppercase">Deleted Users</div>
-                            </div>
-                            <a href="deleteduser.php" class="block-anchor panel-footer text-center">
-                                Full Detail <i class="fa fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
+        <?php if ($isAdmin): ?>
+        <div class="col-md-3">
+            <div class="panel panel-default">
+                <div class="panel-body bk-primary text-light text-center">
+                    <div class="stat-panel-number h1"><?php echo $userCount; ?></div>
+                    <div class="stat-panel-title text-uppercase">Total Users</div>
                 </div>
+                <a href="userlist.php" class="block-anchor panel-footer text-center">
+                    Full Detail <i class="fa fa-arrow-right"></i>
+                </a>
             </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($isAdmin): ?>
+        <div class="col-md-3">
+            <div class="panel panel-default">
+                <div class="panel-body bk-success text-light text-center">
+                    <div class="stat-panel-number h1"><?php echo $feedbackCount; ?></div>
+                    <div class="stat-panel-title text-uppercase">Feedback</div>
+                </div>
+                <a href="feedback.php" class="block-anchor panel-footer text-center">
+                    Full Detail <i class="fa fa-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($isAdmin): ?>
+        <div class="col-md-3">
+            <div class="panel panel-default">
+                <div class="panel-body bk-danger text-light text-center">
+                    <div class="stat-panel-number h1"><?php echo $notiCount; ?></div>
+                    <div class="stat-panel-title text-uppercase">Notifications</div>
+                </div>
+                <a href="notification.php" class="block-anchor panel-footer text-center">
+                    Full Detail <i class="fa fa-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($isAdmin): ?>
+        <div class="col-md-3">
+            <div class="panel panel-default">
+                <div class="panel-body bk-info text-light text-center">
+                    <div class="stat-panel-number h1"><?php echo $deletedCount; ?></div>
+                    <div class="stat-panel-title text-uppercase">Deleted Users</div>
+                </div>
+                <a href="deleteduser.php" class="block-anchor panel-footer text-center">
+                    Full Detail <i class="fa fa-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
+
+    </div>
 
 </div>
 </div>

@@ -36,70 +36,23 @@ function roleIn(string $roleKey, array $list): bool {
 
 <nav class="ts-sidebar">
     <ul class="ts-sidebar-menu">
-
-        <li class="ts-label">
-            <?php echo htmlspecialchars($roleName); ?> Menu
-        </li>
-
-        <li>
-            <a href="dashboard.php">
-                <i class="fa fa-dashboard"></i> Dashboard
-            </a>
-        </li>
-        <?php if (roleIs($roleKey, 'admin')): ?>
-            <li>
-                <a href="adminroles.php">
-                    <i class="fa fa-id-badge"></i> List Roles & Accounts
-                </a>
-            </li>
+        <li class="ts-label"><?php echo htmlspecialchars($roleName); ?> Menu</li>
+        <li><a href="dashboard.php"><i class="fa fa-dashboard"></i> Dashboard</a></li>
+        <li><a href="profile.php"><i class="fa fa-user"></i> My Profile</a></li>
+        <?php if (roleIs($roleKey, 'admin')): ?><li><a href="register.php"><i class="fa fa-user"></i> Registation New Account</a></li><?php endif; ?>
+        <?php if (roleIs($roleKey, 'admin')): ?><li><a href="adminroles.php"><i class="fa fa-id-badge"></i> List Roles & Accounts</a></li>
         <?php endif; ?>
-        <?php if (roleIs($roleKey, 'admin')): ?>
-            <li>
-                <a href="roleslist.php">
-                    <i class="fa fa-users"></i> List & Add New Role
-                </a>
-            </li>
-
-            <li>
-                <a href="userlist.php">
-                    <i class="fa fa-user"></i> User List
-                </a>
-            </li>
+        <?php if (roleIs($roleKey, 'admin')): ?><li><a href="roleslist.php"><i class="fa fa-users"></i> List & Add New Role</a></li>
+        <li><a href="userlist.php"><i class="fa fa-user"></i> User List</a></li>
+        <?php if ((int)($_SESSION['userRole'] ?? 0) === 1): ?><li><a href="security-log.php"><i class="fa fa-shield"></i> Security Logs</a></li><?php endif; ?>
         <?php endif; ?>
-
         <?php if (roleIn($roleKey, ['admin', 'manager', 'staff'])): ?>
-
-            <!-- ✅ NEW: COMPOSE (start a new chat by selecting username/email) -->
-            <li>
-                <a href="compose.php">
-                    <i class="fa fa-pencil"></i> Start a Private Chat
-                </a>
-            </li>
-
-            <li>
-                <a href="feedback.php">
-                    <i class="fa fa-comments"></i> Chat Inbox
-                </a>
-            </li>
-
-            <li>
-                <a href="notification.php">
-                    <i class="fa fa-bell"></i> Notification List
-                </a>
-            </li>
+        <!-- ✅ NEW: COMPOSE (start a new chat by selecting username/email) -->
+        <li><a href="compose.php"><i class="fa fa-pencil"></i> Start a Private Chat</a></li>
+        <!-- <li><a href="feedback.php"><i class="fa fa-comments"></i> Chat Inbox</a></li> -->
+        <!-- <li><a href="notification.php"><i class="fa fa-bell"></i> Notification List</a></li> -->
         <?php endif; ?>
-
-        <li>
-            <a href="profile.php">
-                <i class="fa fa-user"></i> My Profile
-            </a>
-        </li>
-
-        <li>
-            <a href="logout.php">
-                <i class="fa fa-sign-out"></i> Logout
-            </a>
-        </li>
-
+        <li><a href="contacts.php"><i class="fa fa-users"></i> &nbsp;Contacts</a></li>
+        <li><a href="logout.php"><i class="fa fa-sign-out"></i> Logout</a></li>
     </ul>
 </nav>

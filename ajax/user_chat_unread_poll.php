@@ -45,5 +45,5 @@ try {
 
     echo json_encode(['ok'=>true,'unread'=>(int)$unread]);
 } catch (Throwable $e) {
-    echo json_encode(['ok'=>false,'unread'=>0,'error'=>$e->getMessage()]);
+    echo json_encode(['ok'=>false,'unread'=>0,'error'=>'Server error']);
 }

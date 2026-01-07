@@ -3,28 +3,55 @@
 require_once __DIR__ . '/../includes/session_user.php';
 requireUserLogin();
 
-require_once __DIR__ . '/../includes/identity_user.php';
 require_once __DIR__ . '/../admin/controller.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
 try {
-    $controller = new Controller();
-    $dbh = $controller->pdo();
-
-    $email = myUserEmail();
+    $email = trim($_SESSION['user_login'] ?? '');
     if ($email === '') {
-        echo json_encode(['ok'=>false,'unread'=>0]);
+        echo json_encode(['ok' => false, 'unread' => 0, 'error' => 'No session']);
         exit;
     }
 
-    $st = $dbh->prepare("SELECT COUNT(*) FROM notification WHERE notireceiver = :e AND is_read = 0");
-    $st->execute([':e'=>$email]);
+    $controller = new Controller();
+    $dbh = $controller->pdo();
 
-    echo json_encode(['ok'=>true,'unread'=>(int)$st->fetchColumn()]);
+    // ✅ block chat-related notifications from badge count
+    $blockedTypes = [
+        'New chat message',
+        'Internal Chat',
+        'New internal message'
+    ];
+
+    if (!empty($blockedTypes)) {
+        $ph = implode(',', array_fill(0, count($blockedTypes), '?'));
+
+        $st = $dbh->prepare("
+            SELECT COUNT(*)
+            FROM notification
+            WHERE notireceiver = ?
+              AND is_read = 0
+              AND notitype NOT IN ($ph)
+        ");
+        $st->execute(array_merge([$email], $blockedTypes));
+    } else {
+        // fallback if no blocked types
+        $st = $dbh->prepare("
+            SELECT COUNT(*)
+            FROM notification
+            WHERE notireceiver = ?
+              AND is_read = 0
+        ");
+        $st->execute([$email]);
+    }
+
+    $unread = (int)$st->fetchColumn();
+
+    echo json_encode(['ok' => true, 'unread' => $unread]);
 } catch (Throwable $e) {
-    echo json_encode(['ok'=>false,'unread'=>0]);
+    // You can temporarily debug like this:
+    // echo json_encode(['ok'=>false,'unread'=>0,'error'=>$e->getMessage()]);
+    echo json_encode(['ok' => false, 'unread' => 0, 'error' => 'Server error']);
 }

@@ -1,33 +1,47 @@
 <?php
-// /Business_only/config.php
+// /Business_only3/config.php
 
-class Config {
+declare(strict_types=1);
+
+class Config
+{
     private PDO $dbh;
 
-    // DB
-    private string $server   = "localhost";
-    private string $username = "root";
-    private string $password = "root";
-    private string $dbname   = "private_project";
+    /* =========================
+       DATABASE
+    ========================= */
+    public string $DB_HOST = "localhost";
+    public string $DB_USER = "root";
+    public string $DB_PASS = "root";
+    public string $DB_NAME = "private_project";
 
-    // SMTP (Gmail)
+    /* =========================
+       SMTP (GMAIL - APP PASSWORD)
+       ✅ Use App Password (16 chars, spaces OK)
+       ✅ Port 587 + STARTTLS
+    ========================= */
     public string $SMTP_HOST = "smtp.gmail.com";
     public int    $SMTP_PORT = 587;
-    public string $SMTP_USER = "YOUR_GMAIL@gmail.com";
-    public string $SMTP_PASS = "YOUR_GMAIL_APP_PASSWORD"; // Gmail App Password
-    public string $SMTP_FROM = "YOUR_GMAIL@gmail.com";
+    public string $SMTP_USER = "isaaccuma3093@gmail.com";
+    public string $SMTP_PASS = "vjwu vqug zrty ucrz"; // Gmail App Password
+    public string $SMTP_FROM = "isaaccuma3093@gmail.com";
     public string $SMTP_FROM_NAME = "Private App";
 
-    // When receiver is 'Admin', we email this address:
-    public string $ADMIN_ALERT_EMAIL = "YOUR_GMAIL@gmail.com";
+    /* =========================
+       ALERT ROUTING
+       If notireceiver = 'Admin', email goes to this address
+    ========================= */
+    public string $ADMIN_ALERT_EMAIL = "isaaccuma3093@gmail.com";
 
     public function __construct()
     {
+        $dsn = "mysql:host={$this->DB_HOST};dbname={$this->DB_NAME};charset=utf8mb4";
+
         try {
             $this->dbh = new PDO(
-                "mysql:host={$this->server};dbname={$this->dbname};charset=utf8mb4",
-                $this->username,
-                $this->password,
+                $dsn,
+                $this->DB_USER,
+                $this->DB_PASS,
                 [
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -35,6 +49,7 @@ class Config {
                 ]
             );
         } catch (PDOException $e) {
+            // In production you should log this instead of echoing it.
             die("Database could not be connected: " . $e->getMessage());
         }
     }

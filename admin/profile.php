@@ -6,9 +6,10 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 require_once __DIR__ . '/controller.php';
+require_once __DIR__ . '/includes/identity.php';
 
 $controller = new Controller();
-$dbh = $controller->pdo();
+$dbh = $controller->pdo(); // ✅ FIX: define $dbh BEFORE using it
 
 $msg = '';
 $error = '';
@@ -26,7 +27,7 @@ if ($loginValue === '') {
 function fetchAdmin(PDO $dbh, string $loginValue)
 {
     $stmt = $dbh->prepare("
-        SELECT idadmin, username, email, mobile, designation, image, role, image_type
+        SELECT idadmin, username, email, mobile, designation, image, role, image_type, friend_code
         FROM admin
         WHERE username = :u1 OR email = :u2
         LIMIT 1
@@ -43,6 +44,9 @@ $result = fetchAdmin($dbh, $loginValue);
 if (!$result) {
     die("Admin user not found.");
 }
+
+// ✅ Ensure friend code exists (after we know DB + session are valid)
+$myFriendCode = ensureAdminFriendCode($dbh);
 
 // -----------------------------
 // UPDATE PROFILE
@@ -63,32 +67,53 @@ if (isset($_POST['submit'])) {
         $error = "Invalid email address.";
     }
 
+    // prevent duplicate email if changed
+    if ($error === '' && strtolower($email) !== strtolower((string)$result->email)) {
+        $dup = $dbh->prepare("SELECT idadmin FROM admin WHERE email = :e AND idadmin <> :id LIMIT 1");
+        $dup->execute([':e' => $email, ':id' => $idadmin]);
+        if ($dup->fetchColumn()) {
+            $error = "This email already exists.";
+        }
+    }
+
+    // prevent duplicate username if changed
+    if ($error === '' && strtolower($name) !== strtolower((string)$result->username)) {
+        $dup = $dbh->prepare("SELECT idadmin FROM admin WHERE username = :u AND idadmin <> :id LIMIT 1");
+        $dup->execute([':u' => $name, ':id' => $idadmin]);
+        if ($dup->fetchColumn()) {
+            $error = "This username already exists.";
+        }
+    }
+
     // ---------------------------------------
-    // ✅ DB AVATAR UPLOAD (BLOB in phpMyAdmin)
+    // ✅ DB AVATAR UPLOAD (BLOB)
     // ---------------------------------------
     if ($error === '' && !empty($_FILES['image']['name'])) {
-    $allowedTypes = ['image/jpeg','image/png','image/jpg'];
-    $mime = mime_content_type($_FILES['image']['tmp_name']);
+        $allowedTypes = ['image/jpeg','image/png','image/jpg'];
+        $tmp = $_FILES['image']['tmp_name'] ?? '';
+        $mime = $tmp ? @mime_content_type($tmp) : '';
 
-        if (!in_array($mime, $allowedTypes, true)) {
+        if (!$tmp || !is_uploaded_file($tmp)) {
+            $error = "Invalid upload.";
+        } elseif (!in_array($mime, $allowedTypes, true)) {
             $error = "Image must be JPG or PNG.";
         } else {
-            $blob = file_get_contents($_FILES['image']['tmp_name']);
+            $blob = file_get_contents($tmp);
             $type = $mime;
 
             $updImg = $dbh->prepare("
                 UPDATE admin
                 SET image_blob = :b, image_type = :t
                 WHERE idadmin = :id
+                LIMIT 1
             ");
             $updImg->execute([
                 ':b'  => $blob,
                 ':t'  => $type,
-                ':id' => (int)$idadmin
+                ':id' => $idadmin
             ]);
         }
     }
-
 
     // ---------------------------------------
     // ✅ Update admin fields
@@ -96,24 +121,23 @@ if (isset($_POST['submit'])) {
     if ($error === '') {
         try {
             $sql = "UPDATE admin
-                    SET username = :name,
-                        email = :email,
-                        mobile = :mobile,
-                        designation = :designation
-                    WHERE idadmin = :idadmin
+                    SET username = :u,
+                        email = :e,
+                        mobile = :m,
+                        designation = :d
+                    WHERE idadmin = :id
                     LIMIT 1";
 
             $upd = $dbh->prepare($sql);
             $upd->execute([
-                ':name' => $name,
-                ':email' => $email,
-                ':mobile' => $mobile,
-                ':designation' => $designation,
-                ':idadmin' => $idadmin
+                ':u'  => $name,
+                ':e'  => $email,
+                ':m'  => $mobile,
+                ':d'  => $designation,
+                ':id' => $idadmin
             ]);
 
             // ✅ keep login session consistent
-            // choose username as login (matches your admin system)
             $_SESSION['admin_login'] = $name;
 
             header("Location: profile.php?updated=1");
@@ -135,6 +159,9 @@ $result = fetchAdmin($dbh, $_SESSION['admin_login']);
 if (!$result) {
     die("Admin user not found after update.");
 }
+
+// ✅ refresh friend code after update as well
+$myFriendCode = ensureAdminFriendCode($dbh);
 ?>
 <!doctype html>
 <html lang="en" class="no-js">
@@ -170,7 +197,8 @@ if (!$result) {
 <div class="col-md-12">
 
 <div class="panel panel-default">
-  <div class="panel-heading">My Profile - <?php echo htmlentities($_SESSION['admin_login']); ?></div>
+  <div class="panel-heading">My Profile - <?php echo htmlentities($_SESSION['admin_login']); ?>
+</div>
 
   <?php if (!empty($error)): ?>
     <div class="errorWrap"><strong>ERROR</strong>: <?php echo htmlentities($error); ?></div>
@@ -181,15 +209,35 @@ if (!$result) {
   <div class="panel-body">
     <form method="post" class="form-horizontal" enctype="multipart/form-data">
 
+      <!-- ✅ Friend Code (inside form layout so it aligns) -->
+      <div class="form-group">
+        <label class="col-sm-2 control-label">Friend Code</label>
+        <div class="col-sm-4">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text"
+                   class="form-control"
+                   value="<?php echo htmlentities($myFriendCode); ?>"
+                   readonly
+                   style="font-weight:700;letter-spacing:1px;background:#f9f9f9;">
+            <button type="button"
+                    class="btn btn-default"
+                    onclick="navigator.clipboard.writeText('<?php echo $myFriendCode; ?>')">
+              <i class="fa fa-copy"></i>
+            </button>
+          </div>
+          <small class="text-muted">Share this code to add contacts or start internal chat</small>
+        </div>
+      </div>
+
       <div class="form-group">
         <div class="col-sm-4"></div>
         <div class="col-sm-4 text-center">
 
-          <!-- ✅ SHOW AVATAR FROM DB -->
-          <img src="avatar.php?ts=<?php echo time(); ?>"
-     style="width:200px;height:200px;border-radius:50%;margin:10px;object-fit:cover;"
-     alt="Profile">
-
+          <img src="avatar_admin.php?ts=<?php echo time(); ?>"
+          alt="Admin Avatar"
+          width="110"
+          height="110"
+          style="border-radius:50%;object-fit:cover;">
 
           <input type="file" name="image" class="form-control">
           <small class="text-muted">Avatar stored in phpMyAdmin (MySQL). Max 2MB.</small>
@@ -201,13 +249,13 @@ if (!$result) {
         <label class="col-sm-2 control-label">Name *</label>
         <div class="col-sm-4">
           <input type="text" name="name" class="form-control" required
-                 value="<?php echo htmlentities($result->username); ?>">
+                 value="<?php echo htmlentities((string)$result->username); ?>">
         </div>
 
         <label class="col-sm-2 control-label">Email *</label>
         <div class="col-sm-4">
           <input type="email" name="email" class="form-control" required
-                 value="<?php echo htmlentities($result->email); ?>">
+                 value="<?php echo htmlentities((string)$result->email); ?>">
         </div>
       </div>
 
@@ -215,13 +263,13 @@ if (!$result) {
         <label class="col-sm-2 control-label">Mobile *</label>
         <div class="col-sm-4">
           <input type="text" name="mobile" class="form-control" required
-                 value="<?php echo htmlentities($result->mobile); ?>">
+                 value="<?php echo htmlentities((string)$result->mobile); ?>">
         </div>
 
         <label class="col-sm-2 control-label">Designation *</label>
         <div class="col-sm-4">
           <input type="text" name="designation" class="form-control" required
-                 value="<?php echo htmlentities($result->designation); ?>">
+                 value="<?php echo htmlentities((string)$result->designation); ?>">
         </div>
       </div>
 

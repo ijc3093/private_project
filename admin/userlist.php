@@ -165,6 +165,34 @@ try {
         .actions-bar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;}
         .icon-action a{font-size:18px;margin-right:10px;}
         .icon-action a:hover{text-decoration:none;opacity:.8;}
+
+
+        /* Optional sticky sidebar */
+        .ts-sidebar{ position: sticky; top: 70px; height: calc(100vh - 70px); overflow: auto; }
+
+        /* ✅ DataTables scroll: keep header + search fixed and scroll only body */
+        div.dataTables_wrapper div.dataTables_filter,
+        div.dataTables_wrapper div.dataTables_length{
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #fff;
+        padding: 8px 6px;
+        border-bottom: 1px solid #eee;
+        }
+
+        /* DataTables creates scroll containers when scrollY is enabled */
+        div.dataTables_scrollHead thead th{
+        background: #fff !important;
+        }
+
+        /* Make scroll body nicer */
+        div.dataTables_scrollBody{
+        border: 1px solid #ddd;
+        border-top: none;
+        }
+
+        #zctb{ width:100% !important; }
     </style>
 </head>
 
@@ -307,6 +335,16 @@ try {
 <script src="js/dataTables.bootstrap.min.js"></script>
 
 <script>
+
+// ✅ DataTables scrolling body only (header + search stay fixed)
+const dt = $('#zctb').DataTable({
+pageLength: 25,
+lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+order: [[4, 'desc']], // sort by Date & Time column (index 4)
+scrollY: '55vh',      // ✅ body scroll height (change if you want)
+scrollCollapse: true
+});
+
 $(document).ready(function () {
 
     // ✅ DataTables gives:

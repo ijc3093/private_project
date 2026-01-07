@@ -3,7 +3,7 @@
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
-require_once __DIR__ . '/includes/identity_user.php';
+require_once __DIR__ . '/includes/user_identity.php';
 require_once __DIR__ . '/admin/controller.php';
 
 error_reporting(E_ALL);
@@ -33,9 +33,11 @@ $filter = in_array($filter, ['all','unread','read'], true) ? $filter : 'all';
 $threads = [];
 
 try {
-    // --------------------------------------------
-    // 1) Admin thread (Support Center)
-    // --------------------------------------------
+    /**
+     * =========================================
+     * 1) Admin thread (Support Center)
+     * =========================================
+     */
     $stA = $dbh->prepare("
         SELECT
           'Admin' AS peer_key,
@@ -69,30 +71,39 @@ try {
         $threads[] = $adminThread;
     }
 
-    // --------------------------------------------
-    // 2) User ↔ User threads
-    // Peer display = my contact name -> friend_code -> email
-    //
-    // We must:
-    // - Determine peer_email from each feedback row
-    // - Join users to get friend_code
-    // - Join user_contacts (owner_user_id=me, friend_user_id=peer_user.id)
-    // --------------------------------------------
+    /**
+     * =========================================
+     * 2) User ↔ User threads
+     * peer_key     = friend_code (Reply uses this)
+     * peer_display = friend_code ONLY
+     *              OR "SavedName • friend_code" if saved in user_contacts
+     * =========================================
+     */
     $stU = $dbh->prepare("
         SELECT
-          t.peer_email AS peer_key,
+          -- Reply uses friend_code
+          COALESCE(NULLIF(u.friend_code,''), t.peer_email) AS peer_key,
 
-          COALESCE(
-            uc.display_name,
-            u.friend_code,
-            t.peer_email
-          ) AS peer_display,
+          -- Display: default friend_code ONLY,
+          -- if contact saved => 'Name • Code'
+          CASE
+            WHEN COALESCE(NULLIF(uc.display_name,''),'') <> ''
+              AND COALESCE(NULLIF(u.friend_code,''),'') <> ''
+            THEN CONCAT(uc.display_name, ' • ', u.friend_code)
+
+            WHEN COALESCE(NULLIF(u.friend_code,''),'') <> ''
+            THEN u.friend_code
+
+            ELSE t.peer_email
+          END AS peer_display,
 
           MAX(t.created_at) AS last_time,
 
+          -- Unread: only messages coming FROM peer TO me
           SUM(
             CASE WHEN t.receiver = :meEmail
                    AND t.is_read = 0
+                   AND t.sender = t.peer_email
                  THEN 1 ELSE 0 END
           ) AS unread_count,
 
@@ -117,7 +128,8 @@ try {
           ON uc.owner_user_id = :meId
          AND uc.friend_user_id = u.id
 
-        GROUP BY t.peer_email, peer_display
+        GROUP BY peer_key, peer_display
+        HAVING last_time IS NOT NULL
         ORDER BY last_time DESC
     ");
 
@@ -136,12 +148,16 @@ try {
         }
     }
 
-    // Sort all threads by last_time desc
+    /**
+     * Sort all threads by last_time desc
+     */
     usort($threads, function($a, $b){
-        return strtotime((string)$b['last_time']) <=> strtotime((string)$a['last_time']);
+        return strtotime((string)($b['last_time'] ?? '')) <=> strtotime((string)($a['last_time'] ?? ''));
     });
 
-    // Apply read/unread filter
+    /**
+     * Apply read/unread filter
+     */
     if ($filter !== 'all') {
         $threads = array_values(array_filter($threads, function($t) use ($filter){
             $u = (int)($t['unread_count'] ?? 0);
@@ -170,6 +186,27 @@ try {
     .unread-dot{display:inline-block;min-width:18px;text-align:center;background:red;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;font-weight:700;}
     .msg-preview{max-width:520px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .actions-bar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin:10px 0 15px;flex-wrap:wrap;}
+
+    /* Optional sticky sidebar */
+    .ts-sidebar{ position: sticky; top: 70px; height: calc(100vh - 70px); overflow: auto; }
+
+    /* ✅ DataTables scroll: keep header + search fixed and scroll only body */
+    div.dataTables_wrapper div.dataTables_filter,
+    div.dataTables_wrapper div.dataTables_length{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #fff;
+      padding: 8px 6px;
+      border-bottom: 1px solid #eee;
+    }
+
+    /* DataTables creates scroll containers when scrollY is enabled */
+    div.dataTables_scrollHead thead th{
+      background: #fff !important;
+    }
+
+    #zctb{ width:100% !important; }
   </style>
 </head>
 <body>
@@ -243,8 +280,8 @@ try {
             </td>
             <td>
               <a class="btn btn-primary btn-xs"
-                 href="sendreply_user.php?reply=<?php echo urlencode($peerKey); ?>">
-                <i class="fa fa-mail-reply"></i> Open
+                 href="user_sendreply.php?reply=<?php echo urlencode($peerKey); ?>">
+                Reply
               </a>
             </td>
           </tr>
@@ -258,7 +295,6 @@ try {
 
     </div>
   </div>
-
 </div>
 </div>
 </div>
@@ -270,9 +306,13 @@ try {
 
 <script>
 $(function(){
-  $('#chatTable').DataTable({
-    pageLength: 10,
-    order: [[3,'desc']]
+  // ✅ DataTables scrolling body only (header + search stay fixed)
+  const dt = $('#chatTable').DataTable({
+    pageLength: 25,
+    lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+    order: [[4, 'desc']], // sort by Date & Time column (index 4)
+    scrollY: '55vh',      // ✅ body scroll height (change if you want)
+    scrollCollapse: true
   });
 });
 </script>

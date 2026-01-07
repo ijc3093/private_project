@@ -1,180 +1,137 @@
 <?php
 require_once __DIR__ . '/includes/session_admin.php';
-error_reporting(0);
+requireAdminLogin();
 
-include('./controller.php');
+require_once __DIR__ . '/includes/identity.php';
+require_once __DIR__ . '/controller.php';
 
-// ✅ FIX: get PDO connection ($dbh) from controller.php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 $controller = new Controller();
-$dbh = $controller->__construct();
+$dbh = $controller->pdo();
 
-if(strlen($_SESSION['admin_login'])==0){
-    header('location:index.php');
-}else{
+$meId = myAdminId();
+$msg = '';
+$error = '';
 
-    if(isset($_GET['del'])){
-        $id=$_GET['del'];
-        $sql = "delete from users WHERE id=:id";
-        $query = $dbh->prepare($sql);
-        $query->bindParam(':id', $id, PDO::PARAM_STR);
-        $query->execute();
-        $msg="Data Deleted successfully";
-    }
+ensureMyAdminFriendCode($dbh);
 
-    if(isset($_REQUEST['unconfirm'])){
-        $aeid=intval($_GET['unconfirm']);
-        $memstatus=1;
+// delete
+if (isset($_GET['del'])) {
+    $id = (int)$_GET['del'];
+    $st = $dbh->prepare("DELETE FROM admin_contacts WHERE id = :id AND owner_admin_id = :me LIMIT 1");
+    $st->execute([':id' => $id, ':me' => $meId]);
+    $msg = "Contact deleted.";
+}
 
-        // ✅ FIX: SET not SETS
-        $sql = "UPDATE users SET status=:status WHERE id=:aeid";
-        $query = $dbh->prepare($sql);
-        $query->bindParam(':status', $memstatus, PDO::PARAM_STR);
-        $query->bindParam(':aeid', $aeid, PDO::PARAM_STR);
-        $query->execute();
-        $msg="Changes successfully";
-    }
+// load contacts
+$st = $dbh->prepare("
+    SELECT
+      ac.id,
+      ac.display_name,
+      a.username,
+      a.friend_code,
+      a.role
+    FROM admin_contacts ac
+    JOIN admin a ON a.idadmin = ac.friend_admin_id
+    WHERE ac.owner_admin_id = :me
+    ORDER BY COALESCE(ac.display_name, a.friend_code, a.username) ASC, ac.id DESC
+");
+$st->execute([':me' => $meId]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-    if(isset($_REQUEST['confirm'])){
-        $aeid=intval($_GET['confirm']);
-        $memstatus=0;
-
-        // ✅ FIX: SET not SETS
-        $sql = "UPDATE users SET status=:status WHERE id=:aeid";
-        $query = $dbh->prepare($sql);
-        $query->bindParam(':status', $memstatus, PDO::PARAM_STR);
-        $query->bindParam(':aeid', $aeid, PDO::PARAM_STR);
-        $query->execute();
-        $msg="Changes successfully";
-    }
-
+function roleLabel(int $r): string {
+    if ($r === 1) return 'Admin';
+    if ($r === 2) return 'Manager';
+    if ($r === 3) return 'Gospel';
+    if ($r === 4) return 'Staff';
+    return 'Role?';
+}
 ?>
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
-	<meta name="description" content="">
-	<meta name="author" content="">
-	<meta name="theme-color" content="#3e454c">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contacts</title>
 
-	<title>New Compose</title>
+  <link rel="stylesheet" href="css/bootstrap.min.css">
+  <link rel="stylesheet" href="css/font-awesome.min.css">
+  <link rel="stylesheet" href="css/style.css">
 
-	<link rel="stylesheet" href="css/font-awesome.min.css">
-	<link rel="stylesheet" href="css/bootstrap.min.css">
-	<link rel="stylesheet" href="css/dataTables.bootstrap.min.css">
-	<link rel="stylesheet" href="css/bootstrap-social.css">
-	<link rel="stylesheet" href="css/bootstrap-select.css">
-	<link rel="stylesheet" href="css/fileinput.min.css">
-	<link rel="stylesheet" href="css/awesome-bootstrap-checkbox.css">
-	<link rel="stylesheet" href="css/style.css">
-
-    <style>
-        .errorWrap {
-            padding: 10px;
-            margin: 0 0 20px 0;
-            background: #dd3d36;
-            color:#fff;
-            -webkit-box-shadow: 0 1px 1px 0 rgba(0,0,0,.1);
-            box-shadow: 0 1px 1px 0 rgba(0,0,0,.1);
-        }
-        .succWrap{
-            padding: 10px;
-            margin: 0 0 20px 0;
-            background: #5cb85c;
-            color:#fff;
-            -webkit-box-shadow: 0 1px 1px 0 rgba(0,0,0,.1);
-            box-shadow: 0 1px 1px 0 rgba(0,0,0,.1);
-        }
-	</style>
+  <style>
+    .succWrap{padding:10px;background:#5cb85c;color:#fff;margin:0 0 15px;}
+    .errorWrap{padding:10px;background:#dd3d36;color:#fff;margin:0 0 15px;}
+    .box{background:#fff;border:1px solid #ddd;border-radius:8px;padding:18px;}
+    .rowline{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;}
+    .rowline:last-child{border-bottom:none;}
+    .meta{color:#777;font-size:12px;}
+  </style>
 </head>
-
 <body>
-<?php include('includes/header.php');?>
+
+<?php include __DIR__ . '/includes/header.php'; ?>
 <div class="ts-main-content">
-<?php include('includes/leftbar.php');?>
+<?php include __DIR__ . '/includes/leftbar.php'; ?>
+
 <div class="content-wrapper">
 <div class="container-fluid">
 
-<div class="row">
-<div class="col-md-12">
+  <h2 class="page-title">My Contacts</h2>
 
-<h2 class="page-title">New Compose</h2>
+  <?php if ($msg): ?><div class="succWrap"><?php echo htmlentities($msg); ?></div><?php endif; ?>
+  <?php if ($error): ?><div class="errorWrap"><?php echo htmlentities($error); ?></div><?php endif; ?>
 
-<div class="panel panel-default">
-	<div class="panel-body">
+  <div class="box">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <a class="btn btn-primary" href="compose.php"><i class="fa fa-pencil"></i> New Message</a>
+      <a class="btn btn-default" href="add_contact.php"><i class="fa fa-user-plus"></i> Add Contact</a>
+    </div>
 
-        <?php if($error){?>
-            <div class="errorWrap" id="msgshow"><?php echo htmlentities($error); ?></div>
-        <?php } else if($msg){?>
-            <div class="succWrap" id="msgshow"><?php echo htmlentities($msg); ?></div>
-        <?php } ?>
+    <?php if (empty($rows)): ?>
+      <div class="alert alert-info">No contacts yet.</div>
+    <?php else: ?>
+      <?php foreach ($rows as $c): ?>
+        <?php
+          $display = trim((string)($c['display_name'] ?? ''));
+          $fc = trim((string)($c['friend_code'] ?? ''));
+          $uname = trim((string)($c['username'] ?? ''));
+          $title = ($display !== '') ? $display : (($fc !== '') ? $fc : $uname);
+        ?>
+        <div class="rowline">
+          <div>
+            <div style="font-weight:700;"><?php echo htmlentities($title); ?></div>
+            <div class="meta">
+              Friend Code: <b><?php echo htmlentities($fc); ?></b> • <?php echo htmlentities(roleLabel((int)$c['role'])); ?>
+            </div>
+          </div>
 
-		<table id="zctb" class="display table table-striped table-bordered table-hover" cellspacing="0" width="100%">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>From: User Email</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
+          <div style="display:flex;gap:8px;">
+            <a class="btn btn-success btn-xs"
+               href="sendreply.php?reply=<?php echo urlencode($fc); ?>">
+              <i class="fa fa-comment"></i> Message
+            </a>
 
-            <tbody>
-            <?php
-                $receiver = 'Admin';
-                $sql = "SELECT * FROM feedback WHERE receiver = (:receiver)";
-                $query = $dbh->prepare($sql);
-                $query->bindParam(':receiver', $receiver, PDO::PARAM_STR);
-                $query->execute();
-                $results = $query->fetchAll(PDO::FETCH_OBJ);
-                $cnt = 1;
-
-                if($query->rowCount() > 0){
-                    foreach($results as $result){
-            ?>
-                <tr>
-                    <td><?php echo htmlentities($cnt);?></td>
-                    <td><?php echo htmlentities($result->sender);?></td>
-                    <td>
-                        <a href="sendreply.php?reply=<?php echo urlencode($result->sender);?>">Send a new message</a>
-                    </td>
-                </tr>
-            <?php
-                        $cnt++;
-                    }
-                }
-            ?>
-            </tbody>
-        </table>
-
-	</div>
-</div>
-
-</div>
-</div>
+            <a class="btn btn-danger btn-xs"
+               href="contacts.php?del=<?php echo (int)$c['id']; ?>"
+               onclick="return confirm('Delete this contact?');">
+              <i class="fa fa-trash"></i>
+            </a>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    <?php endif; ?>
+  </div>
 
 </div>
 </div>
 </div>
 
 <script src="js/jquery.min.js"></script>
-<script src="js/bootstrap-select.min.js"></script>
 <script src="js/bootstrap.min.js"></script>
-<script src="js/jquery.dataTables.min.js"></script>
-<script src="js/dataTables.bootstrap.min.js"></script>
-<script src="js/Chart.min.js"></script>
-<script src="js/fileinput.js"></script>
-<script src="js/chartData.js"></script>
-<script src="js/main.js"></script>
-<script type="text/javascript">
-$(document).ready(function () {
-    setTimeout(function() {
-        $('.succWrap').slideUp("slow");
-    }, 3000);
-});
+<script>
+setTimeout(() => $('.succWrap,.errorWrap').slideUp('slow'), 2500);
 </script>
-
 </body>
 </html>
-</body>
-<?php } ?>

@@ -181,6 +181,33 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
             .desktop-actions { display:inline-block !important; }
             .mobile-actions { display:none !important; }
         }
+
+        /* Optional sticky sidebar */
+        .ts-sidebar{ position: sticky; top: 70px; height: calc(100vh - 70px); overflow: auto; }
+
+        /* ✅ DataTables scroll: keep header + search fixed and scroll only body */
+        div.dataTables_wrapper div.dataTables_filter,
+        div.dataTables_wrapper div.dataTables_length{
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #fff;
+        padding: 8px 6px;
+        border-bottom: 1px solid #eee;
+        }
+
+        /* DataTables creates scroll containers when scrollY is enabled */
+        div.dataTables_scrollHead thead th{
+        background: #fff !important;
+        }
+
+        /* Make scroll body nicer */
+        div.dataTables_scrollBody{
+        border: 1px solid #ddd;
+        border-top: none;
+        }
+
+        #rolesTable{ width:100% !important; }
     </style>
 </head>
 
@@ -367,6 +394,15 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
 <script src="js/main.js"></script>
 
 <script>
+  // ✅ DataTables scrolling body only (header + search stay fixed)
+  const dt = $('#zctb').DataTable({
+    pageLength: 25,
+    lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+    order: [[4, 'desc']], // sort by Date & Time column (index 4)
+    scrollY: '55vh',      // ✅ body scroll height (change if you want)
+    scrollCollapse: true
+  });
+
 function openDeleteModal(el){
     var roleId = el.getAttribute('data-roleid');
     var roleName = el.getAttribute('data-rolename');

@@ -8,26 +8,33 @@ ini_set('display_errors', '1');
 
 $error = '';
 
+// already logged in -> dashboard
+if (!empty($_SESSION['user_login']) && !empty($_SESSION['user_id'])) {
+    header("Location: dashboard.php");
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
     $username    = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
     if ($username === '' || $password === '') {
-        $error = "Please enter username and password.";
+        $error = "Please enter username/email and password.";
     } else {
         try {
-            $db = new Controller();
+            $controller = new Controller();
 
-            // IMPORTANT: userLogin must return id, username, email,name,image,role,status
-            $user = $db->userLogin($username, $password);
-
+            // ✅ login supports username OR email
+            $user = $controller->userLogin($username, $password);
             if ($user) {
+                // ✅ this function must exist in includes/session_user.php
                 setUserSession($user);
+
                 header("Location: dashboard.php");
                 exit;
             } else {
-                $error = "Invalid username/password or account inactive.";
+                $error = "Invalid login credentials or account inactive.";
             }
         } catch (Throwable $e) {
             $error = "Server error: " . $e->getMessage();
@@ -38,59 +45,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 <!doctype html>
 <html lang="en" class="no-js">
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login</title>
 
-    <title>Login</title>
-
-    <link rel="stylesheet" href="css/font-awesome.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
-    <link rel="stylesheet" href="css/dataTables.bootstrap.min.css">
-    <link rel="stylesheet" href="css/bootstrap-social.css">
-    <link rel="stylesheet" href="css/bootstrap-select.css">
-    <link rel="stylesheet" href="css/fileinput.min.css">
-    <link rel="stylesheet" href="css/awesome-bootstrap-checkbox.css">
-    <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/font-awesome.min.css">
+  <link rel="stylesheet" href="css/bootstrap.min.css">
+  <link rel="stylesheet" href="css/style.css">
 </head>
-
 <body>
 <div class="login-page bk-img">
-    <div class="form-content">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6 col-md-offset-3">
-                    <h1 class="text-center text-bold mt-4x">Login</h1>
+  <div class="form-content">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-6 col-md-offset-3">
+          <h1 class="text-center text-bold mt-4x">Login</h1>
 
-                    <div class="well row pt-2x pb-3x bk-light">
-                        <div class="col-md-8 col-md-offset-2">
+          <div class="well row pt-2x pb-3x bk-light">
+            <div class="col-md-8 col-md-offset-2">
 
-                            <?php if (!empty($error)) : ?>
-                                <div class="alert alert-danger">
-                                    <?php echo htmlentities($error); ?>
-                                </div>
-                            <?php endif; ?>
+              <?php if ($error !== ''): ?>
+                <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
+              <?php endif; ?>
 
-                            <form method="post" autocomplete="off">
-                                <label class="text-uppercase text-sm">Your Username</label>
-                                <input type="username" placeholder="Username" name="username" class="form-control mb" required>
+              <form method="post" autocomplete="off">
+                <label class="text-uppercase text-sm">Username or Email</label>
+                <input type="text" placeholder="Username or Email" name="username" class="form-control mb" required>
 
-                                <label class="text-uppercase text-sm">Password</label>
-                                <input type="password" placeholder="Password" name="password" class="form-control mb" required>
+                <label class="text-uppercase text-sm">Password</label>
+                <input type="password" placeholder="Password" name="password" class="form-control mb" required>
 
-                                <button class="btn btn-primary btn-block" name="login" type="submit">LOGIN</button>
-                            </form>
+                <button class="btn btn-primary btn-block" name="login" type="submit" value="1">LOGIN</button>
+                <div style="margin-top:10px;text-align:center;"><a href="forgot.php">Forgot password?</a></div>
+              </form>
 
-                            <br>
-                            <p>Don't Have an Account? <a href="register.php">Signup</a></p>
+              <br>
+              <p>Don't Have an Account? <a href="register.php">Signup</a></p>
 
-                        </div>
-                    </div>
-
-                </div>
             </div>
+          </div>
+
         </div>
+      </div>
     </div>
+  </div>
 </div>
 
 <script src="js/jquery.min.js"></script>
