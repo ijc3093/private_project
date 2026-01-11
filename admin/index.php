@@ -1,9 +1,11 @@
 <?php
 // /Business_only3/admin/index.php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+declare(strict_types=1);
 
-require_once __DIR__ . '/includes/session_admin.php'; // starts admin session
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+require_once __DIR__ . '/includes/session_admin.php';
 require_once __DIR__ . '/controller.php';
 
 $controller = new Controller();
@@ -11,55 +13,53 @@ $dbh = $controller->pdo();
 
 $error = '';
 
-// already logged in
-if (!empty($_SESSION['admin_login']) && !empty($_SESSION['admin_id']) && !empty($_SESSION['userRole'])) {
+// Already logged in
+if (!empty($_SESSION['admin_id']) && !empty($_SESSION['userRole'])) {
     header("Location: dashboard.php");
     exit;
 }
 
+// Friendly messages
+if (isset($_GET['inactiveRole'])) $error = "ERROR: Your role is invalid. Contact Admin.";
+if (isset($_GET['inactive']))     $error = "ERROR: Your account is inactive. Contact Admin.";
+if (isset($_GET['locked']))       $error = "ERROR: Your account is temporarily locked. Try again later.";
+
 if (isset($_POST['login'])) {
-    $login = trim($_POST['username'] ?? '');
-    $pass  = trim($_POST['password'] ?? '');
+    $login = trim((string)($_POST['username'] ?? ''));
+    $pass  = trim((string)($_POST['password'] ?? ''));
 
     if ($login === '' || $pass === '') {
         $error = "Please enter username/email and password.";
     } else {
-
-        // Fetch admin row for status / lockout / force_password_change
         $st = $dbh->prepare("
-            SELECT
-                idadmin, fullname, username, email, password, role, status,
-                force_password_change, failed_login_attempts, locked_until,
-                friend_code, image
+            SELECT idadmin, fullname, username, email, password, role, status,
+                   force_password_change, failed_login_attempts, locked_until,
+                   friend_code, image
             FROM admin
             WHERE (username = :u OR email = :e)
             LIMIT 1
         ");
-        $st->execute([
-            ':u' => $login,
-            ':e' => $login
-        ]);
+        $st->execute([':u' => $login, ':e' => $login]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
 
         if (!$row) {
             $error = "Invalid login credentials.";
         } elseif ((int)$row['status'] !== 1) {
             $error = "Your account is inactive. Contact Admin.";
-        } elseif (!empty($row['locked_until']) && strtotime($row['locked_until']) > time()) {
+        } elseif (!empty($row['locked_until']) && strtotime((string)$row['locked_until']) > time()) {
             $error = "Account temporarily locked. Try again later.";
         } else {
 
-            // Verify password using Controller helper (supports legacy hashes + upgrades)
+            // verify password using your Controller helper
             $admin = $controller->adminLogin($login, $pass);
 
             if (!$admin) {
-                // Failed login
                 $attempts = (int)($row['failed_login_attempts'] ?? 0) + 1;
                 $lockedUntil = null;
 
                 if ($attempts >= 5) {
                     $lockedUntil = date('Y-m-d H:i:s', time() + 15 * 60);
-                    $attempts = 0; // reset after lock
+                    $attempts = 0;
                 }
 
                 $up = $dbh->prepare("
@@ -77,7 +77,8 @@ if (isset($_POST['login'])) {
 
                 $error = "Invalid login credentials.";
             } else {
-                // Success login
+
+                // success reset
                 $up = $dbh->prepare("
                     UPDATE admin
                     SET failed_login_attempts = 0,
@@ -86,21 +87,18 @@ if (isset($_POST['login'])) {
                     WHERE idadmin = :idadmin
                     LIMIT 1
                 ");
-                $up->execute([
-                    ':idadmin' => (int)$row['idadmin'],
-                ]);
+                $up->execute([':idadmin' => (int)$row['idadmin']]);
 
-                // Set session (admin cookie name handled in session_admin.php)
                 setAdminSession([
                     'idadmin'     => (int)$row['idadmin'],
                     'username'    => (string)$row['username'],
                     'email'       => (string)$row['email'],
-                    'role'        => (int)$row['role'],
+                    'role'        => (int)$row['role'], // ✅ role table idrole
                     'image'       => (string)($row['image'] ?? 'default.jpg'),
                     'friend_code' => (string)($row['friend_code'] ?? ''),
                 ]);
 
-                // Force password change
+                // Force change password
                 if ((int)($row['force_password_change'] ?? 0) === 1) {
                     header("Location: change-password.php?force=1");
                     exit;
@@ -124,10 +122,7 @@ if (isset($_POST['login'])) {
   <link rel="stylesheet" href="css/font-awesome.min.css">
   <link rel="stylesheet" href="css/bootstrap.min.css">
   <link rel="stylesheet" href="css/style.css">
-
-  <style>
-    .errorWrap{padding:10px;margin:0 0 15px 0;background:#dd3d36;color:#fff;}
-  </style>
+  <style>.errorWrap{padding:10px;margin:0 0 15px 0;background:#dd3d36;color:#fff;}</style>
 </head>
 <body>
 <div class="login-page bk-img" style="background-image: url(img/background.jpg);">
@@ -135,14 +130,12 @@ if (isset($_POST['login'])) {
     <div class="container">
       <div class="row">
         <div class="col-md-6 col-md-offset-3">
-
           <h1 class="text-center text-bold mt-4x">Admin Login</h1>
 
           <div class="well row pt-2x pb-3x bk-light">
             <div class="col-md-8 col-md-offset-2">
-
               <?php if ($error !== ''): ?>
-                <div class="errorWrap"><strong>ERROR:</strong> <?php echo htmlentities($error); ?></div>
+                <div class="errorWrap"><strong><?php echo htmlentities($error); ?></strong></div>
               <?php endif; ?>
 
               <form method="post" autocomplete="off">

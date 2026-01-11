@@ -108,7 +108,7 @@ if (isset($_POST['add'])) {
         } elseif ((int)$peer['idadmin'] === $meId) {
             $error = "You cannot add yourself.";
         } else {
-            // Ensure these roles can chat
+            // Ensure these role can chat
             $peerRole = (int)$peer['role'];
             $ch = channelForAdminRoles($meRole, $peerRole);
             if ($ch === '') {

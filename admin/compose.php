@@ -143,7 +143,7 @@ if (isset($_POST['send'])) {
         elseif ((int)$peer['idadmin'] === $meId) $error = "You cannot message yourself.";
     }
 
-    // Determine internal channel by roles
+    // Determine internal channel by role
     $channel = '';
     if ($error === '') {
         $peerRole = (int)($peer['role'] ?? 0);

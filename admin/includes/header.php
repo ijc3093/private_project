@@ -142,7 +142,7 @@ window.addEventListener("pageshow", function (event) {
     <!-- ACCOUNT -->
     <li>
       <a href="#">
-        <img src="avatar.php?ts=<?php echo time(); ?>"
+        <img src="avatar_admin.php?ts=<?php echo time(); ?>"
              class="ts-avatar hidden-side"
              alt="Profile"
              style="width:30px;height:30px;border-radius:50%;object-fit:cover;">

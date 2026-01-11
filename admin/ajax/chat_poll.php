@@ -1,73 +1,92 @@
 <?php
+// /Business_only3/admin/ajax/chat_poll.php
+declare(strict_types=1);
+
 require_once __DIR__ . '/../includes/session_admin.php';
 requireAdminLogin();
+
+require_once __DIR__ . '/../includes/identity.php';
+require_once __DIR__ . '/../controller.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 
-require_once __DIR__ . '/../controller.php';
-
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$peer   = trim($_GET['peer'] ?? '');
+$meUser = myUsername();
+$meRole = myRoleId();
+
+if ($meUser === '' || $meRole <= 0) {
+    echo json_encode(['ok'=>false,'error'=>'Invalid session']);
+    exit;
+}
+
+$peer   = trim((string)($_GET['peer'] ?? ''));   // peer USERNAME
 $lastId = (int)($_GET['last_id'] ?? 0);
 
-if ($peer === '' || !filter_var($peer, FILTER_VALIDATE_EMAIL)) {
-    echo json_encode(['ok' => false, 'error' => 'Invalid peer email']);
+if ($peer === '') {
+    echo json_encode(['ok'=>false,'error'=>'Invalid peer']);
+    exit;
+}
+
+// peer role => channel
+$st = $dbh->prepare("SELECT username, role, status FROM admin WHERE username = :u LIMIT 1");
+$st->execute([':u' => $peer]);
+$peerRow = $st->fetch(PDO::FETCH_ASSOC);
+
+if (!$peerRow || (int)$peerRow['status'] !== 1) {
+    echo json_encode(['ok'=>false,'error'=>'Peer not found/inactive']);
+    exit;
+}
+
+$peerRole = (int)$peerRow['role'];
+$channel  = channelForAdminRoles($meRole, $peerRole);
+
+if ($channel === '') {
+    echo json_encode(['ok'=>false,'error'=>'Channel not allowed']);
     exit;
 }
 
 try {
-    // ✅ auto-mark read: user -> Admin
+    // mark unread peer->me as read
     $mk = $dbh->prepare("
         UPDATE feedback
         SET is_read = 1, read_at = NOW()
-        WHERE sender = :peer
-          AND receiver = :admin
+        WHERE channel = :ch
+          AND sender = :peer
+          AND receiver = :me
           AND is_read = 0
     ");
-    $mk->execute([
-        ':peer'  => $peer,
-        ':admin' => 'Admin'
-    ]);
+    $mk->execute([':ch'=>$channel, ':peer'=>$peer, ':me'=>$meUser]);
 
-    // ✅ fetch only new messages (by id)
-    $st = $dbh->prepare("
-        SELECT id, sender, receiver, feedbackdata, attachment, created_at
+    // fetch new messages
+    $q = $dbh->prepare("
+        SELECT id, sender, receiver, channel, feedbackdata, attachment, created_at
         FROM feedback
-        WHERE (
-              (sender = :peer1 AND receiver = :admin1)
-           OR (sender = :admin2 AND receiver = :peer2)
-        )
+        WHERE channel = :ch
+          AND (
+                (sender = :me AND receiver = :peer)
+             OR (sender = :peer2 AND receiver = :me2)
+          )
           AND id > :lastId
         ORDER BY id ASC
         LIMIT 200
     ");
-    $st->execute([
-        ':peer1'  => $peer,
-        ':admin1' => 'Admin',
-        ':admin2' => 'Admin',
-        ':peer2'  => $peer,
-        ':lastId' => $lastId,
+    $q->execute([
+        ':ch' => $channel,
+        ':me' => $meUser,
+        ':peer' => $peer,
+        ':peer2' => $peer,
+        ':me2' => $meUser,
+        ':lastId' => $lastId
     ]);
-    $messages = $st->fetchAll(PDO::FETCH_ASSOC);
 
-    // optional: overall unread count (Admin inbox badge)
-    $cnt = $dbh->prepare("
-        SELECT COUNT(*) 
-        FROM feedback
-        WHERE receiver = :admin AND is_read = 0
-    ");
-    $cnt->execute([':admin' => 'Admin']);
-    $unreadTotal = (int)$cnt->fetchColumn();
+    echo json_encode(['ok'=>true, 'messages'=>$q->fetchAll(PDO::FETCH_ASSOC)]);
+    exit;
 
-    echo json_encode([
-        'ok' => true,
-        'unread_total' => $unreadTotal,
-        'messages' => $messages
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+} catch (Throwable $e) {
+    echo json_encode(['ok'=>false,'error'=>'Server error']);
+    exit;
 }

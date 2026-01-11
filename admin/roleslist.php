@@ -29,7 +29,7 @@ $userRole = (int)($_SESSION['userRole'] ?? 0);
 $isAdmin = ($userRole === 1);
 
 if (!$isAdmin) {
-    // Only Admin can access roles management
+    // Only Admin can access role management
     header('Location: dashboard.php');
     exit;
 }
@@ -42,7 +42,7 @@ $error = '';
 // -----------------------------
 if (isset($_POST['delete_role'])) {
     if (!$isAdmin) {
-        $error = "You are not allowed to delete roles.";
+        $error = "You are not allowed to delete role.";
     } else {
         $roleId = (int)($_POST['delete_idrole'] ?? 0);
 
@@ -50,7 +50,7 @@ if (isset($_POST['delete_role'])) {
             if ($roleId <= 0) {
                 $error = "Invalid role id.";
             } elseif (in_array($roleId, [1,2,3,4], true)) {
-                $error = "You cannot delete default roles.";
+                $error = "You cannot delete default role.";
             } else {
                 // Block deletion if any admin uses this role
                 $stmt = $dbh->prepare("SELECT COUNT(*) AS cnt FROM admin WHERE role = :rid");
@@ -106,7 +106,7 @@ if (isset($_POST['update_role'])) {
     } else {
         try {
             if (in_array($roleId, [1,2,3,4], true)) {
-                $error = "You cannot rename default roles.";
+                $error = "You cannot rename default role.";
             } else {
                 $stmt = $dbh->prepare("UPDATE role SET name = :name WHERE idrole = :id");
                 $stmt->execute([':name' => $roleName, ':id' => $roleId]);
@@ -122,10 +122,10 @@ if (isset($_POST['update_role'])) {
     }
 }
 
-// Fetch roles
+// Fetch role
 $stmt = $dbh->prepare("SELECT idrole, name FROM role ORDER BY idrole ASC");
 $stmt->execute();
-$roles = $stmt->fetchAll(PDO::FETCH_OBJ);
+$role = $stmt->fetchAll(PDO::FETCH_OBJ);
 ?>
 <!doctype html>
 <html lang="en" class="no-js">
@@ -134,7 +134,7 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
     <meta name="theme-color" content="#3e454c">
-    <title>Roles List</title>
+    <title>role List</title>
 
     <link rel="stylesheet" href="css/font-awesome.min.css">
     <link rel="stylesheet" href="css/bootstrap.min.css">
@@ -244,14 +244,14 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
                             </button>
                         </form>
                         <p style="margin-top:10px;color:#666;">
-                            Default roles are locked: Admin, Manager, Gospel, Staff.
+                            Default role are locked: Admin, Manager, Gospel, Staff.
                         </p>
                     </div>
                 </div>
 
-                <!-- List Roles -->
+                <!-- List role -->
                 <div class="panel panel-default">
-                    <div class="panel-heading">Roles List</div>
+                    <div class="panel-heading">role List</div>
                     <div class="panel-body">
 
                         <table id="rolesTable" class="display table table-striped table-bordered table-hover" cellspacing="0" width="100%">
@@ -267,7 +267,7 @@ $roles = $stmt->fetchAll(PDO::FETCH_OBJ);
                             <tbody>
                             <?php
                             $cnt = 1;
-                            foreach ($roles as $r):
+                            foreach ($role as $r):
                                 $rid = (int)$r->idrole;
                                 $isDefault = in_array($rid, [1,2,3,4], true);
                             ?>

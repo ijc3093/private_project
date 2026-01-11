@@ -3,7 +3,6 @@
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
-require_once __DIR__ . '/includes/user_identity.php';
 require_once __DIR__ . '/admin/controller.php';
 
 error_reporting(E_ALL);
@@ -15,22 +14,17 @@ $dbh = $controller->pdo();
 $meEmail = myUserEmail();
 $myRole  = myUserRoleId();
 
-if ($meEmail === '' || !$myRole) die("Invalid session.");
+if ($meEmail === '' || $myRole <= 0) {
+    die("Invalid session.");
+}
 
 $error = '';
 $targets = [];
 
 try {
-    // Admin is always available
-    $targets[] = [
-        'type'  => 'admin',
-        'value' => adminInboxKey(),
-        'label' => 'Admin (Support)'
-    ];
-
-    // Same-role users (exclude self)
+    // ✅ Same-role users only (exclude self)
     $st = $dbh->prepare("
-        SELECT id, name, email, role
+        SELECT id, name, email
         FROM users
         WHERE role = :r
           AND status = 1
@@ -41,10 +35,18 @@ try {
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $u) {
+        $name = trim((string)($u['name'] ?? ''));
+        $email = trim((string)($u['email'] ?? ''));
+
+        if ($email === '') continue;
+
+        $label = ($name !== '')
+            ? ($name . " (" . $email . ")")
+            : $email;
+
         $targets[] = [
-            'type'  => 'user',
-            'value' => $u['email'],
-            'label' => $u['name'] . " (" . $u['email'] . ")"
+            'value' => $email,
+            'label' => $label
         ];
     }
 } catch (Throwable $e) {
@@ -52,10 +54,11 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $to = trim($_POST['to'] ?? '');
+    $to = trim((string)($_POST['to'] ?? ''));
     if ($to === '') {
         $error = "Please select a recipient.";
     } else {
+        // ✅ redirect to user-to-user chat
         header("Location: user_sendreply.php?reply=" . urlencode($to));
         exit;
     }
@@ -80,27 +83,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="content-wrapper">
 <div class="container-fluid">
-  <!-- <h2 class="page-title">Compose</h2> -->
 
   <?php if ($error): ?>
-    <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
+    <div class="alert alert-danger"><?php echo htmlentities($error, ENT_QUOTES, 'UTF-8'); ?></div>
   <?php endif; ?>
 
   <div class="panel panel-default">
-    <div class="panel-heading">Start a chat</div>
+    <div class="panel-heading">Start a chat (User → User)</div>
     <div class="panel-body">
 
       <?php if (empty($targets)): ?>
-        <div class="alert alert-info">No available recipients.</div>
+        <div class="alert alert-info">No available recipients in your role.</div>
       <?php else: ?>
-        <form method="post">
+        <form method="post" autocomplete="off">
           <div class="form-group">
             <label>To</label>
             <select class="form-control" name="to" required>
               <option value="">-- Select --</option>
               <?php foreach ($targets as $t): ?>
-                <option value="<?php echo htmlentities($t['value']); ?>">
-                  <?php echo htmlentities($t['label']); ?>
+                <option value="<?php echo htmlentities($t['value'], ENT_QUOTES, 'UTF-8'); ?>">
+                  <?php echo htmlentities($t['label'], ENT_QUOTES, 'UTF-8'); ?>
                 </option>
               <?php endforeach; ?>
             </select>
@@ -114,6 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     </div>
   </div>
+
 </div>
 </div>
 </div>

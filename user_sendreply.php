@@ -1,6 +1,5 @@
 <?php
 // /Business_only3/user_sendreply.php
-
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
@@ -14,6 +13,7 @@ $controller = new Controller();
 $dbh = $controller->pdo();
 
 $meEmail = userEmail();
+$meId    = myUserId();
 $myRole  = userRoleId();
 
 if ($meEmail === '' || $myRole <= 0) {
@@ -67,7 +67,7 @@ function resolvePeerEmail(PDO $dbh, string $replyRaw): array
  */
 function getPeerDisplayName(PDO $dbh, string $myEmail, string $peerEmail): string
 {
-    // Try contacts table (edit column names here if yours differ)
+    // Try contacts table
     try {
         $st = $dbh->prepare("
             SELECT contact_name
@@ -79,7 +79,7 @@ function getPeerDisplayName(PDO $dbh, string $myEmail, string $peerEmail): strin
         $cname = trim((string)$st->fetchColumn());
         if ($cname !== '') return $cname;
     } catch (Throwable $e) {
-        // ignore if contacts table does not exist
+        // ignore if table/columns don't exist
     }
 
     // fallback to users.name
@@ -99,7 +99,7 @@ if (!$res['ok']) {
 }
 
 $peerEmail = $res['email'];
-$channel   = 'user_user'; // ✅ user only chats with user
+$channel   = 'user_user'; // user chat only
 
 // Validate recipient: must exist, active, and same role
 $st = $dbh->prepare("SELECT id, name, email, role, status FROM users WHERE email = :e LIMIT 1");
@@ -128,59 +128,12 @@ try {
     // ignore
 }
 
-// Send message
-if (isset($_POST['send'])) {
-    $text = trim($_POST['message'] ?? '');
-
-    $attachment = null;
-    $folder = __DIR__ . "/attachment/";
-    if (!is_dir($folder)) mkdir($folder, 0755, true);
-
-    if (!empty($_FILES['attachment']['name'])) {
-        $file     = $_FILES['attachment']['name'];
-        $file_loc = $_FILES['attachment']['tmp_name'];
-        $ext      = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        $allowed  = ['jpg','jpeg','png','pdf','doc','docx'];
-
-        if (!in_array($ext, $allowed, true)) {
-            $error = "Invalid attachment type.";
-        } else {
-            $base = preg_replace('/[^a-zA-Z0-9-_]/', '-', pathinfo($file, PATHINFO_FILENAME));
-            $final_file = strtolower($base . '-' . time() . '.' . $ext);
-
-            if (move_uploaded_file($file_loc, $folder . $final_file)) {
-                $attachment = $final_file;
-            } else {
-                $error = "Attachment upload failed.";
-            }
-        }
-    }
-
-    if ($error === '' && $text === '' && !$attachment) {
-        $error = "Message cannot be empty (add text or attachment).";
-    }
-
-    if ($error === '') {
-        try {
-            $stmt = $dbh->prepare("
-                INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, attachment, is_read)
-                VALUES (:s, :r, 'user_user', 'Chat', :d, :a, 0)
-            ");
-            $stmt->execute([
-                ':s' => $meEmail,
-                ':r' => $peerEmail,
-                ':d' => $text,
-                ':a' => $attachment
-            ]);
-
-            header("Location: user_sendreply.php?reply=" . urlencode($replyRaw));
-            exit;
-
-        } catch (Throwable $e) {
-            $error = "Database error: " . $e->getMessage();
-        }
-    }
-}
+/**
+ * NOTE:
+ * We no longer POST-send here with redirect.
+ * Sending is done instantly via AJAX to: ajax/chat_send.php
+ * This keeps UI live and avoids refresh.
+ */
 
 // Load chat history
 $rows = [];
@@ -206,8 +159,10 @@ try {
     $error = "Database error: " . $e->getMessage();
 }
 
+// Helpers
 function fmt_dt($dt) { return $dt ? date('M d, Y h:i A', strtotime($dt)) : ''; }
 function safe_text($txt) { return nl2br(htmlentities((string)($txt ?? ''), ENT_QUOTES, 'UTF-8')); }
+function h($s){ return htmlentities((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
 <!doctype html>
 <html lang="en" class="no-js">
@@ -244,8 +199,11 @@ function safe_text($txt) { return nl2br(htmlentities((string)($txt ?? ''), ENT_Q
 
   <h2 class="page-title">
     Chat with: <strong><?php echo h($peerDisplayName); ?></strong> (User → User)
-    
   </h2>
+
+  <!-- Hidden fields for JS polling/send -->
+  <input type="hidden" id="peerEmail" value="<?php echo h($peerEmail); ?>">
+  <input type="hidden" id="meEmail" value="<?php echo h($meEmail); ?>">
 
   <?php if ($error): ?><div class="alert alert-danger"><?php echo h($error); ?></div><?php endif; ?>
   <?php if ($msg): ?><div class="alert alert-success"><?php echo h($msg); ?></div><?php endif; ?>
@@ -261,7 +219,7 @@ function safe_text($txt) { return nl2br(htmlentities((string)($txt ?? ''), ENT_Q
           $bubbleCls = $isMe ? 'bubble bubble-me' : 'bubble';
           $who = $isMe ? 'You' : $peerDisplayName;
         ?>
-        <div class="row-msg <?php echo $rowClass; ?>">
+        <div class="row-msg <?php echo $rowClass; ?>" data-msg-id="<?php echo (int)$r['id']; ?>">
           <div class="<?php echo $bubbleCls; ?>">
             <?php echo safe_text($r['feedbackdata'] ?? ''); ?>
 
@@ -288,9 +246,9 @@ function safe_text($txt) { return nl2br(htmlentities((string)($txt ?? ''), ENT_Q
           <textarea id="chatInput" name="message" class="form-control" rows="5" placeholder="Type your message..."></textarea>
         </div>
         <div class="col-md-4">
-          <input type="file" name="attachment" class="form-control">
+          <input id="chatFile" type="file" name="attachment" class="form-control">
           <br/>
-          <button type="submit" name="send" class="btn btn-primary btn-block">
+          <button type="submit" class="btn btn-primary btn-block">
             <i class="fa fa-send"></i> Send
           </button>
           <small class="text-muted">Allowed: jpg, jpeg, png, pdf, doc, docx</small>
@@ -307,33 +265,184 @@ function safe_text($txt) { return nl2br(htmlentities((string)($txt ?? ''), ENT_Q
 <script src="js/bootstrap.min.js"></script>
 
 <script>
-(function(){
+(function () {
+  const chatBox   = document.getElementById('chatBox');
+  const peerEmail = (document.getElementById('peerEmail')?.value || '').trim();
+  const meEmail   = (document.getElementById('meEmail')?.value || '').trim();
+  const form      = document.getElementById('chatForm');
+  const input     = document.getElementById('chatInput');
+  const fileInput = document.getElementById('chatFile');
+
+  // ✅ Debug helper (remove later if you want)
+  // console.log({ peerEmail, meEmail });
+
   function scrollChatToBottom(force=false){
-    const box = document.getElementById('chatBox');
-    if (!box) return;
-    const nearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 120;
-    if (force || nearBottom) box.scrollTop = box.scrollHeight;
+    if (!chatBox) return;
+    const nearBottom = (chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight) < 120;
+    if (force || nearBottom) chatBox.scrollTop = chatBox.scrollHeight;
   }
 
-  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[c]));
+  }
 
+  function fmtLocal(dtStr){
+    if (!dtStr) return '';
+    // dtStr = "YYYY-MM-DD HH:MM:SS"
+    const iso = dtStr.replace(' ', 'T');
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString();
+  }
+
+  // ✅ Derive lastId from DOM
+  let lastId = 0;
+  if (chatBox) {
+    chatBox.querySelectorAll('[data-msg-id]').forEach(el => {
+      const id = Number(el.getAttribute('data-msg-id')) || 0;
+      if (id > lastId) lastId = id;
+    });
+  }
+
+  // ✅ Keep a set to prevent duplicates even if timing overlaps
+  const seen = new Set();
+  if (chatBox) {
+    chatBox.querySelectorAll('[data-msg-id]').forEach(el => {
+      const id = Number(el.getAttribute('data-msg-id')) || 0;
+      if (id) seen.add(id);
+    });
+  }
+
+  function renderMessage(m){
+    const id = Number(m.id) || 0;
+    if (id && seen.has(id)) return;
+
+    const sender = String(m.sender || '');
+    const text   = String(m.feedbackdata || '');
+    const attachment = m.attachment ? String(m.attachment) : '';
+    const createdAt = m.created_at ? String(m.created_at) : '';
+
+    const isMe = sender.toLowerCase() === meEmail.toLowerCase();
+    const rowClass  = isMe ? 'row-right' : 'row-left';
+    const bubbleCls = isMe ? 'bubble bubble-me' : 'bubble';
+    const who = isMe ? 'You' : 'Friend';
+
+    const row = document.createElement('div');
+    row.className = `row-msg ${rowClass}`;
+    row.setAttribute('data-msg-id', String(id || ''));
+
+    const attachmentHtml = attachment
+      ? `<div style="margin-top:8px;">
+           <i class="fa fa-paperclip"></i>
+           <a target="_blank" href="attachment/${encodeURIComponent(attachment)}">${esc(attachment)}</a>
+         </div>`
+      : '';
+
+    const timeTxt = fmtLocal(createdAt);
+
+    row.innerHTML = `
+      <div class="${bubbleCls}">
+        ${esc(text).replace(/\n/g,'<br>')}
+        ${attachmentHtml}
+        <div class="meta">${esc(who)}${timeTxt ? ' • ' + esc(timeTxt) : ''}</div>
+      </div>
+    `;
+
+    chatBox.appendChild(row);
+
+    if (id) {
+      seen.add(id);
+      if (id > lastId) lastId = id;
+    }
+
+    scrollChatToBottom(false);
+  }
+
+  // initial scroll
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   window.addEventListener('load', function(){
     scrollChatToBottom(true);
     setTimeout(() => scrollChatToBottom(true), 50);
     setTimeout(() => scrollChatToBottom(true), 200);
   });
 
-  const form = document.getElementById('chatForm');
-  form.addEventListener('submit', function(e){
-    const msg = (document.getElementById('chatInput').value || '').trim();
-    const file = document.querySelector('input[type="file"]').files.length;
-    if (!msg && !file) {
+  // ✅ Instant send (AJAX)
+  if (form) {
+    form.addEventListener('submit', async function(e){
       e.preventDefault();
-      alert('Message cannot be empty (add text or attachment).');
+
+      const msg = (input?.value || '').trim();
+      const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+
+      if (!msg && !hasFile) {
+        alert('Message cannot be empty (add text or attachment).');
+        return;
+      }
+
+      if (!peerEmail || !meEmail) {
+        alert('Chat identity missing (peer/me). Check hidden inputs peerEmail/meEmail.');
+        return;
+      }
+
+      const fd = new FormData(form);
+      fd.append('peer', peerEmail);
+
+      try {
+        const res = await fetch('ajax/chat_send.php', { method: 'POST', body: fd, cache: 'no-store' });
+        const data = await res.json();
+
+        if (!data.ok) {
+          alert(data.error || 'Send failed.');
+          return;
+        }
+
+        // ✅ Render immediately
+        renderMessage(data.message);
+
+        // clear input + file
+        if (input) input.value = '';
+        if (fileInput) fileInput.value = '';
+
+      } catch (err) {
+        alert('Network error sending message.');
+      }
+    });
+  }
+
+  // ✅ Poll incoming messages (<1 sec)
+  let pollTimer = null;
+  let inFlight = false;
+
+  async function pollChat(){
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      const url = `ajax/chat_poll.php?peer=${encodeURIComponent(peerEmail)}&last_id=${encodeURIComponent(lastId)}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.messages)) {
+        for (const m of data.messages) renderMessage(m);
+      }
+    } catch (e) {
+      // ignore temporary errors
+    } finally {
+      inFlight = false;
     }
-  });
+  }
+
+  // ✅ Start polling only if all values exist
+  if (chatBox && peerEmail && meEmail) {
+    pollChat();
+    pollTimer = setInterval(pollChat, 700);
+  } else {
+    // If this triggers, your hidden inputs are missing or empty.
+    console.warn('Polling not started. Missing chatBox/peerEmail/meEmail.', { peerEmail, meEmail, chatBox });
+  }
+
 })();
 </script>
+
 
 </body>
 </html>
