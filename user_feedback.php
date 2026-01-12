@@ -1,5 +1,7 @@
 <?php
 // /Business_only3/user_feedback.php
+declare(strict_types=1);
+
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
@@ -12,22 +14,54 @@ ini_set('display_errors', '1');
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$meEmail = trim(userEmail());
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+function fmt_dt($dt): string { return $dt ? date('M d, Y h:i A', strtotime((string)$dt)) : ''; }
+
+$meEmail = trim((string)userEmail());
 $meId    = (int)userId();
 
 if ($meEmail === '' || $meId <= 0) {
     die("Invalid session.");
 }
 
+/**
+ * ✅ HARD SESSION SAFETY:
+ * Make sure the session email matches the DB user row for this userId.
+ * If not, you're actually still logged in as an older user (stale session).
+ */
+$stMe = $dbh->prepare("SELECT id, email, created_at, status FROM users WHERE id = :id LIMIT 1");
+$stMe->execute([':id' => $meId]);
+$meRow = $stMe->fetch(PDO::FETCH_ASSOC);
+
+if (!$meRow) {
+    // userId in session does not exist
+    if (function_exists('clearUserSession')) clearUserSession();
+    header("Location: index.php");
+    exit;
+}
+if ((int)$meRow['status'] !== 1) {
+    if (function_exists('clearUserSession')) clearUserSession();
+    header("Location: index.php?inactive=1");
+    exit;
+}
+if (strcasecmp((string)$meRow['email'], $meEmail) !== 0) {
+    // session email doesn't match this userId -> stale/mixed session
+    if (function_exists('clearUserSession')) clearUserSession();
+    header("Location: index.php?session=reset");
+    exit;
+}
+
+$userCreatedAt = (string)($meRow['created_at'] ?? '');
+if ($userCreatedAt === '') {
+    // fallback: if created_at missing, do not block by date
+    $userCreatedAt = '1970-01-01 00:00:00';
+}
+
 $msg = '';
 $error = '';
 
-function fmt_dt($dt) {
-    return $dt ? date('M d, Y h:i A', strtotime($dt)) : '';
-}
-
 // filter: all | unread | read
-$filter = strtolower(trim($_GET['filter'] ?? 'all'));
+$filter = strtolower(trim((string)($_GET['filter'] ?? 'all')));
 $filter = in_array($filter, ['all','unread','read'], true) ? $filter : 'all';
 
 $threads = [];
@@ -37,6 +71,8 @@ try {
      * =========================================
      * 1) Admin thread (Support Center)
      * =========================================
+     * ✅ IMPORTANT FIX:
+     * Only show messages created AFTER this user account was created.
      */
     $stA = $dbh->prepare("
         SELECT
@@ -55,6 +91,7 @@ try {
           ) AS last_message
         FROM feedback f
         WHERE f.channel = 'user_admin'
+          AND f.created_at >= :cutoff
           AND (
                (f.sender = :meEmail2 AND f.receiver = 'Admin')
             OR (f.sender = 'Admin' AND f.receiver = :meEmail3)
@@ -63,7 +100,8 @@ try {
     $stA->execute([
         ':meEmail'  => $meEmail,
         ':meEmail2' => $meEmail,
-        ':meEmail3' => $meEmail
+        ':meEmail3' => $meEmail,
+        ':cutoff'   => $userCreatedAt
     ]);
     $adminThread = $stA->fetch(PDO::FETCH_ASSOC);
 
@@ -74,32 +112,24 @@ try {
     /**
      * =========================================
      * 2) User ↔ User threads
-     * peer_key     = friend_code (Reply uses this)
-     * peer_display = friend_code ONLY
-     *              OR "SavedName • friend_code" if saved in user_contacts
      * =========================================
+     * ✅ IMPORTANT FIX:
+     * Only show user_user messages created AFTER this user account was created.
      */
     $stU = $dbh->prepare("
         SELECT
-          -- Reply uses friend_code
           COALESCE(NULLIF(u.friend_code,''), t.peer_email) AS peer_key,
-
-          -- Display: default friend_code ONLY,
-          -- if contact saved => 'Name • Code'
           CASE
             WHEN COALESCE(NULLIF(uc.display_name,''),'') <> ''
               AND COALESCE(NULLIF(u.friend_code,''),'') <> ''
             THEN CONCAT(uc.display_name, ' • ', u.friend_code)
-
             WHEN COALESCE(NULLIF(u.friend_code,''),'') <> ''
             THEN u.friend_code
-
             ELSE t.peer_email
           END AS peer_display,
 
           MAX(t.created_at) AS last_time,
 
-          -- Unread: only messages coming FROM peer TO me
           SUM(
             CASE WHEN t.receiver = :meEmail
                    AND t.is_read = 0
@@ -118,6 +148,7 @@ try {
             CASE WHEN f.sender = :meEmail2 THEN f.receiver ELSE f.sender END AS peer_email
           FROM feedback f
           WHERE f.channel = 'user_user'
+            AND f.created_at >= :cutoff
             AND (f.sender = :meEmail3 OR f.receiver = :meEmail4)
         ) t
 
@@ -138,7 +169,8 @@ try {
         ':meEmail2' => $meEmail,
         ':meEmail3' => $meEmail,
         ':meEmail4' => $meEmail,
-        ':meId'     => $meId
+        ':meId'     => $meId,
+        ':cutoff'   => $userCreatedAt
     ]);
 
     $userThreads = $stU->fetchAll(PDO::FETCH_ASSOC);
@@ -148,16 +180,12 @@ try {
         }
     }
 
-    /**
-     * Sort all threads by last_time desc
-     */
+    // Sort threads by last_time desc
     usort($threads, function($a, $b){
         return strtotime((string)($b['last_time'] ?? '')) <=> strtotime((string)($a['last_time'] ?? ''));
     });
 
-    /**
-     * Apply read/unread filter
-     */
+    // Apply read/unread filter
     if ($filter !== 'all') {
         $threads = array_values(array_filter($threads, function($t) use ($filter){
             $u = (int)($t['unread_count'] ?? 0);
@@ -186,27 +214,7 @@ try {
     .unread-dot{display:inline-block;min-width:18px;text-align:center;background:red;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;font-weight:700;}
     .msg-preview{max-width:520px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .actions-bar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin:10px 0 15px;flex-wrap:wrap;}
-
-    /* Optional sticky sidebar */
     .ts-sidebar{ position: sticky; top: 70px; height: calc(100vh - 70px); overflow: auto; }
-
-    /* ✅ DataTables scroll: keep header + search fixed and scroll only body */
-    div.dataTables_wrapper div.dataTables_filter,
-    div.dataTables_wrapper div.dataTables_length{
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      background: #fff;
-      padding: 8px 6px;
-      border-bottom: 1px solid #eee;
-    }
-
-    /* DataTables creates scroll containers when scrollY is enabled */
-    div.dataTables_scrollHead thead th{
-      background: #fff !important;
-    }
-
-    #zctb{ width:100% !important; }
   </style>
 </head>
 <body>
@@ -220,8 +228,8 @@ try {
 
   <h2 class="page-title">Messages</h2>
 
-  <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlentities($error); ?></div><?php endif; ?>
-  <?php if ($msg): ?><div class="alert alert-success"><?php echo htmlentities($msg); ?></div><?php endif; ?>
+  <?php if ($error): ?><div class="alert alert-danger"><?php echo h($error); ?></div><?php endif; ?>
+  <?php if ($msg): ?><div class="alert alert-success"><?php echo h($msg); ?></div><?php endif; ?>
 
   <div class="panel panel-default">
     <div class="panel-heading">Inbox</div>
@@ -262,15 +270,15 @@ try {
             $peerDisplay = (string)($t['peer_display'] ?? $peerKey);
           ?>
           <tr>
-            <td><?php echo $i++; ?></td>
+            <td><?php echo (int)$i++; ?></td>
             <td>
-              <?php echo htmlentities($peerDisplay); ?>
+              <?php echo h($peerDisplay); ?>
               <?php if ((int)($t['unread_count'] ?? 0) > 0): ?>
                 &nbsp;<span class="pill">new</span>
               <?php endif; ?>
             </td>
-            <td class="msg-preview"><?php echo htmlentities((string)($t['last_message'] ?? '')); ?></td>
-            <td><?php echo htmlentities(fmt_dt($t['last_time'] ?? '')); ?></td>
+            <td class="msg-preview"><?php echo h((string)($t['last_message'] ?? '')); ?></td>
+            <td><?php echo h(fmt_dt($t['last_time'] ?? '')); ?></td>
             <td>
               <?php if ((int)($t['unread_count'] ?? 0) > 0): ?>
                 <span class="unread-dot"><?php echo (int)$t['unread_count']; ?></span>
@@ -306,13 +314,10 @@ try {
 
 <script>
 $(function(){
-  // ✅ DataTables scrolling body only (header + search stay fixed)
-  const dt = $('#chatTable').DataTable({
+  $('#chatTable').DataTable({
     pageLength: 25,
     lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
-    order: [[4, 'desc']], // sort by Date & Time column (index 4)
-    scrollY: '55vh',      // ✅ body scroll height (change if you want)
-    scrollCollapse: true
+    order: [[3, 'desc']]
   });
 });
 </script>
