@@ -43,6 +43,17 @@ if (isset($_POST['submit'])) {
         $createdTempPassword = $result['temp_password'];
     }
 }
+
+$dbh = $controller->pdo();
+$roles = $dbh->query("SELECT idrole, name FROM role WHERE status = 1 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// $roles = $dbh->query("
+//   SELECT idrole, name
+//   FROM role
+//   WHERE status = 1
+//   ORDER BY name ASC
+// ")->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 <!doctype html>
 <html lang="en">
@@ -110,11 +121,11 @@ if (isset($_POST['submit'])) {
       <div class="form-group">
         <label>Role *</label>
         <select name="role" class="form-control" required>
-          <option value="">Select</option>
-          <option value="2">Manager</option>
-          <option value="4">Staff</option>
-          <option value="3">Gospel</option>
-          <option value="1">Admin</option>
+          <?php foreach($roles as $r): ?>
+            <option value="<?php echo (int)$r['idrole']; ?>">
+              <?php echo htmlentities($r['name']); ?>
+            </option>
+          <?php endforeach; ?>
         </select>
       </div>
 

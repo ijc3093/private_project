@@ -75,24 +75,30 @@ if (isset($_POST['delete_role'])) {
 // Create role
 // -----------------------------
 if (isset($_POST['create_role'])) {
-    $roleName = trim($_POST['role_name'] ?? '');
+  $roleName = trim($_POST['role_name'] ?? '');
+  $inherits = (int)($_POST['inherits_from'] ?? 0);
+  $status   = (int)($_POST['status'] ?? 1);
 
-    if ($roleName === '') {
-        $error = "Role name is required.";
-    } else {
-        try {
-            $stmt = $dbh->prepare("INSERT INTO role (name) VALUES (:name)");
-            $stmt->execute([':name' => $roleName]);
-            $msg = "Role created successfully.";
-        } catch (PDOException $e) {
-            if ((int)$e->getCode() === 23000) {
-                $error = "Role already exists.";
-            } else {
-                $error = "Create failed: " . $e->getMessage();
-            }
-        }
+  if ($roleName === '') {
+    $error = "Role name is required.";
+  } else {
+    try {
+      $stmt = $dbh->prepare("
+        INSERT INTO role (name, inherits_from, status)
+        VALUES (:name, :inh, :st)
+      ");
+      $stmt->execute([
+        ':name' => $roleName,
+        ':inh'  => ($inherits > 0 ? $inherits : null),
+        ':st'   => ($status === 1 ? 1 : 0)
+      ]);
+      $msg = "Role created successfully.";
+    } catch (PDOException $e) {
+      $error = "Create failed: " . $e->getMessage();
     }
+  }
 }
+
 
 // -----------------------------
 // Update role name
@@ -234,15 +240,31 @@ $role = $stmt->fetchAll(PDO::FETCH_OBJ);
                     
                     <div class="panel-heading">List & Add New Role - Create New Role</div>
                     <div class="panel-body">
+                        <?php
+                        $baseRoles = $dbh->query("SELECT idrole,name FROM role WHERE status=1 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+                        ?>
                         <form method="post" class="form-inline">
-                            <div class="form-group">
-                                <label class="sr-only">Role Name</label>
-                                <input type="text" name="role_name" class="form-control" placeholder="Role name" required>
-                            </div>
-                            <button type="submit" name="create_role" class="btn btn-primary">
-                                <i class="fa fa-plus"></i> Add Role
-                            </button>
+                        <input type="text" name="role_name" class="form-control" placeholder="Role name" required>
+
+                        <select name="inherits_from" class="form-control">
+                            <option value="0">No inheritance</option>
+                            <?php foreach($baseRoles as $br): ?>
+                            <option value="<?php echo (int)$br['idrole']; ?>">
+                                Inherit: <?php echo htmlentities($br['name']); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+
+                        <select name="status" class="form-control">
+                            <option value="1" selected>Active</option>
+                            <option value="0">Inactive</option>
+                        </select>
+
+                        <button type="submit" name="create_role" class="btn btn-primary">
+                            <i class="fa fa-plus"></i> Add Role
+                        </button>
                         </form>
+
                         <p style="margin-top:10px;color:#666;">
                             Default role are locked: Admin, Manager, Gospel, Staff.
                         </p>

@@ -1,5 +1,7 @@
 <?php
 // /Business_only3/admin/feedback.php
+declare(strict_types=1);
+
 require_once __DIR__ . '/includes/session_admin.php';
 requireAdminLogin();
 
@@ -7,7 +9,7 @@ require_once __DIR__ . '/includes/identity.php';
 require_once __DIR__ . '/controller.php';
 
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', '1');
 
 $controller = new Controller();
 $dbh = $controller->pdo();
@@ -15,28 +17,26 @@ $dbh = $controller->pdo();
 $msg = '';
 $error = '';
 
-$filter = strtolower(trim($_GET['filter'] ?? 'all'));
+$filter = strtolower(trim((string)($_GET['filter'] ?? 'all')));
 $filter = in_array($filter, ['all','unread','read'], true) ? $filter : 'all';
 
-$adminMode = isAdmin(); // role 1 only
+$adminMode = isAdmin(); // base Admin role
+$me     = myUsername();
+$meId   = myAdminId();
 
-$meUser  = myUsername(); // internal sender/receiver = username
-$meId    = myAdminId();
-$meRole  = myRoleId();
+if ($me === '' || $meId <= 0) die("Session missing username/id.");
 
-if ($meUser === '' || $meId <= 0 || $meRole <= 0) die("Session missing username/id.");
-
-function h($s): string { return htmlentities((string)$s, ENT_QUOTES, 'UTF-8'); }
-function fmt_dt($dt): string { return $dt ? date('M d, Y h:i A', strtotime($dt)) : ''; }
+function fmt_dt($dt) { return $dt ? date('M d, Y h:i A', strtotime((string)$dt)) : ''; }
 function isEmail($s): bool { return (strpos((string)$s, '@') !== false); }
+function h($s): string { return htmlentities((string)$s); }
 
 $internalChannels = allowedInternalChannelsForMe();
 
 /**
- * Admin role 1 can switch: public/internal
- * Other roles: internal only
+ * Admin base role can switch public/internal.
+ * Other base roles can only access internal.
  */
-$view = strtolower(trim($_GET['view'] ?? ($adminMode ? 'public' : 'internal')));
+$view = strtolower(trim((string)($_GET['view'] ?? ($adminMode ? 'public' : 'internal'))));
 $view = in_array($view, ['public','internal'], true) ? $view : 'internal';
 if (!$adminMode) $view = 'internal';
 
@@ -47,41 +47,26 @@ function goBack(string $view, string $filter, string $msgKey = ''): void {
     exit;
 }
 
-/**
- * Resolve peer username from peer key
- * - peer key can be friend_code OR username
- */
-function resolvePeerUsername(PDO $dbh, string $peerKey): string {
-    $peerKey = trim($peerKey);
-    if ($peerKey === '') return '';
-
-    // Try friend_code first
+function resolveUsernameFromFriendCode(PDO $dbh, string $friendCode): string {
     $st = $dbh->prepare("SELECT username FROM admin WHERE UPPER(friend_code) = :c AND status=1 LIMIT 1");
-    $st->execute([':c' => strtoupper($peerKey)]);
-    $u = (string)($st->fetchColumn() ?: '');
-    if ($u !== '') return $u;
-
-    // Fallback: username
-    $st2 = $dbh->prepare("SELECT username FROM admin WHERE username = :u AND status=1 LIMIT 1");
-    $st2->execute([':u' => $peerKey]);
-    $u2 = (string)($st2->fetchColumn() ?: '');
-    return $u2;
+    $st->execute([':c' => strtoupper(trim($friendCode))]);
+    return (string)($st->fetchColumn() ?: '');
 }
 
-/* ==========================================================
-   ACTIONS
-========================================================== */
+/**
+ * ==========================
+ * ACTIONS
+ * ==========================
+ */
 
 // MARK ONE THREAD READ
 if (isset($_GET['mark']) && $_GET['mark'] !== '') {
-    $peerKey = trim($_GET['mark']);
-
+    $peerKey = trim((string)$_GET['mark']);
     try {
         // PUBLIC
         if ($view === 'public') {
             if (!$adminMode || !isEmail($peerKey)) goBack($view, $filter);
 
-            // mark user->Admin unread as read
             $mk = $dbh->prepare("
                 UPDATE feedback
                 SET is_read = 1, read_at = NOW()
@@ -97,12 +82,10 @@ if (isset($_GET['mark']) && $_GET['mark'] !== '') {
         // INTERNAL
         if (empty($internalChannels)) goBack($view, $filter);
 
-        $peerUsername = resolvePeerUsername($dbh, $peerKey);
+        $peerUsername = resolveUsernameFromFriendCode($dbh, $peerKey);
         if ($peerUsername === '') goBack($view, $filter);
 
         $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-
-        // mark peer->me unread as read (receiver=me)
         $mk = $dbh->prepare("
             UPDATE feedback
             SET is_read = 1, read_at = NOW()
@@ -111,7 +94,7 @@ if (isset($_GET['mark']) && $_GET['mark'] !== '') {
               AND channel IN ($ph)
               AND is_read = 0
         ");
-        $mk->execute(array_merge([$meUser, $peerUsername], $internalChannels));
+        $mk->execute(array_merge([$me, $peerUsername], $internalChannels));
         goBack($view, $filter, 'threadread');
 
     } catch (Throwable $e) {
@@ -121,8 +104,7 @@ if (isset($_GET['mark']) && $_GET['mark'] !== '') {
 
 // DELETE ONE THREAD
 if (isset($_GET['del']) && $_GET['del'] !== '') {
-    $peerKey = trim($_GET['del']);
-
+    $peerKey = trim((string)$_GET['del']);
     try {
         // PUBLIC
         if ($view === 'public') {
@@ -143,11 +125,10 @@ if (isset($_GET['del']) && $_GET['del'] !== '') {
         // INTERNAL
         if (empty($internalChannels)) goBack($view, $filter);
 
-        $peerUsername = resolvePeerUsername($dbh, $peerKey);
+        $peerUsername = resolveUsernameFromFriendCode($dbh, $peerKey);
         if ($peerUsername === '') goBack($view, $filter);
 
         $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-
         $del = $dbh->prepare("
             DELETE FROM feedback
             WHERE channel IN ($ph)
@@ -156,7 +137,7 @@ if (isset($_GET['del']) && $_GET['del'] !== '') {
                  OR (sender = ? AND receiver = ?)
               )
         ");
-        $del->execute(array_merge($internalChannels, [$meUser, $peerUsername, $peerUsername, $meUser]));
+        $del->execute(array_merge($internalChannels, [$me, $peerUsername, $peerUsername, $me]));
         goBack($view, $filter, 'deleted');
 
     } catch (Throwable $e) {
@@ -193,7 +174,7 @@ if (isset($_POST['mark_all_read'])) {
               AND channel IN ($ph)
               AND is_read=0
         ");
-        $mk->execute(array_merge([$meUser], $internalChannels));
+        $mk->execute(array_merge([$me], $internalChannels));
         goBack($view, $filter, 'allread');
 
     } catch (Throwable $e) {
@@ -208,7 +189,7 @@ if (isset($_POST['delete_all'])) {
         if ($view === 'public') {
             if (!$adminMode) goBack($view, $filter);
 
-            $del = $dbh->prepare("DELETE FROM feedback WHERE channel='user_admin' AND (receiver='Admin' OR sender='Admin')");
+            $del = $dbh->prepare("DELETE FROM feedback WHERE receiver='Admin' AND channel='user_admin'");
             $del->execute();
             goBack($view, $filter, 'deletedall');
         }
@@ -217,12 +198,8 @@ if (isset($_POST['delete_all'])) {
         if (empty($internalChannels)) goBack($view, $filter);
 
         $ph = implode(',', array_fill(0, count($internalChannels), '?'));
-        $del = $dbh->prepare("
-            DELETE FROM feedback
-            WHERE channel IN ($ph)
-              AND (sender=? OR receiver=?)
-        ");
-        $del->execute(array_merge($internalChannels, [$meUser, $meUser]));
+        $del = $dbh->prepare("DELETE FROM feedback WHERE receiver=? AND channel IN ($ph)");
+        $del->execute(array_merge([$me], $internalChannels));
         goBack($view, $filter, 'deletedall');
 
     } catch (Throwable $e) {
@@ -236,11 +213,11 @@ if (($_GET['msg'] ?? '') === 'threadread') $msg = "Thread marked as read.";
 if (($_GET['msg'] ?? '') === 'deleted')    $msg = "Thread deleted.";
 if (($_GET['msg'] ?? '') === 'deletedall') $msg = "All threads deleted.";
 
-/* ==========================================================
-   INITIAL THREAD LOAD (SERVER RENDER)
-   (After this, JS will poll ajax/threads_poll.php and refresh list live)
-========================================================== */
-
+/**
+ * ==========================
+ * FETCH THREADS
+ * ==========================
+ */
 $threads = [];
 
 try {
@@ -248,57 +225,25 @@ try {
         if (!$adminMode) {
             $threads = [];
         } else {
-            // ✅ FIXED: include BOTH directions (Admin<->User) in thread grouping
             $sql = "
               SELECT
-                peer,
-                MAX(id) AS last_id,
-                MAX(created_at) AS last_time,
-                SUM(CASE
-                      WHEN receiver='Admin' AND sender=peer AND is_read=0 THEN 1
-                      ELSE 0
-                    END) AS unread_count
-              FROM (
-                SELECT
-                  id, sender, receiver, created_at, is_read,
-                  CASE WHEN sender='Admin' THEN receiver ELSE sender END AS peer
-                FROM feedback
-                WHERE channel='user_admin'
-                  AND (sender='Admin' OR receiver='Admin')
-              ) x
-              GROUP BY peer
-              ORDER BY last_id DESC
+                f.sender AS peer_key,
+                f.sender AS peer_display,
+                MAX(f.created_at) AS last_time,
+                SUM(CASE WHEN f.is_read=0 THEN 1 ELSE 0 END) AS unread_count,
+                SUBSTRING_INDEX(
+                  GROUP_CONCAT(f.feedbackdata ORDER BY f.created_at DESC SEPARATOR ' ||| '),
+                  ' ||| ', 1
+                ) AS last_message
+              FROM feedback f
+              WHERE f.receiver='Admin'
+                AND f.channel='user_admin'
+              GROUP BY f.sender
+              ORDER BY last_time DESC
             ";
             $stmt = $dbh->prepare($sql);
             $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // fetch last message preview by last_id
-            $lastMap = [];
-            if ($rows) {
-                $ids = array_values(array_filter(array_map(fn($r) => (int)$r['last_id'], $rows)));
-                if ($ids) {
-                    $in = implode(',', array_fill(0, count($ids), '?'));
-                    $q = $dbh->prepare("SELECT id, feedbackdata FROM feedback WHERE id IN ($in)");
-                    $q->execute($ids);
-                    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                        $lastMap[(int)$r['id']] = (string)($r['feedbackdata'] ?? '');
-                    }
-                }
-            }
-
-            foreach ($rows as $r) {
-                $peer = (string)($r['peer'] ?? '');
-                $lastId = (int)($r['last_id'] ?? 0);
-                $lastMsg = $lastMap[$lastId] ?? '';
-                $threads[] = [
-                    'peer_key' => $peer,           // email
-                    'peer_display' => $peer,
-                    'last_time' => (string)($r['last_time'] ?? ''),
-                    'unread_count' => (int)($r['unread_count'] ?? 0),
-                    'last_message' => $lastMsg
-                ];
-            }
+            $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
     } else {
@@ -307,12 +252,11 @@ try {
         } else {
             $ph = implode(',', array_fill(0, count($internalChannels), '?'));
 
-            // ✅ FIXED: peer_key falls back to username if friend_code empty
             $sql = "
               SELECT
-                COALESCE(NULLIF(a.friend_code,''), a.username) AS peer_key,
+                a.friend_code AS peer_key,
                 CONCAT(
-                  COALESCE(NULLIF(a.fullname,''), a.username),
+                  COALESCE(NULLIF(ac.display_name,''), NULLIF(a.fullname,''), a.username),
                   ' • ',
                   COALESCE(NULLIF(a.friend_code,''), a.username)
                 ) AS peer_display,
@@ -325,20 +269,22 @@ try {
               FROM feedback f
               JOIN admin a
                 ON a.username = CASE WHEN f.sender=? THEN f.receiver ELSE f.sender END
+              LEFT JOIN admin_contacts ac
+                ON ac.owner_admin_id = ?
+               AND ac.friend_admin_id = a.idadmin
               WHERE (f.sender=? OR f.receiver=?)
                 AND f.channel IN ($ph)
-              GROUP BY peer_key, peer_display
+              GROUP BY a.friend_code, peer_display
               ORDER BY last_time DESC
             ";
 
             $stmt = $dbh->prepare($sql);
-            $params = array_merge([$meUser, $meUser, $meUser, $meUser], $internalChannels);
+            $params = array_merge([$me, $me, $meId, $me, $me], $internalChannels);
             $stmt->execute($params);
             $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
     }
 
-    // filter unread/read/all
     if ($filter !== 'all') {
         $threads = array_values(array_filter($threads, function($t) use ($filter){
             $u = (int)($t['unread_count'] ?? 0);
@@ -354,7 +300,6 @@ try {
 <html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chat Inbox</title>
 
@@ -442,27 +387,24 @@ try {
         <thead>
           <tr>
             <th>#</th>
-            <th><?php echo ($view === 'public') ? 'Peer (User Email)' : 'Peer (Name / Friend Code)'; ?></th>
+            <th><?php echo ($view === 'public') ? 'From (User Email)' : 'Peer (Name / Friend Code)'; ?></th>
             <th>Last Message</th>
             <th>Last Time</th>
             <th>Unread</th>
             <th style="width:180px;">Action</th>
           </tr>
         </thead>
-        <tbody id="threadsBody">
+        <tbody>
         <?php $i=1; foreach ($threads as $t): ?>
           <?php
             $peerKey = (string)($t['peer_key'] ?? '');
             $peerDisplay = (string)($t['peer_display'] ?? $peerKey);
             $unread = (int)($t['unread_count'] ?? 0);
-
-            $lastMsg = (string)($t['last_message'] ?? '');
-            if (mb_strlen($lastMsg) > 140) $lastMsg = mb_substr($lastMsg, 0, 140) . '...';
           ?>
           <tr>
             <td><?php echo $i++; ?></td>
             <td><?php echo h($peerDisplay); ?><?php if ($unread > 0): ?>&nbsp;<span class="pill">new</span><?php endif; ?></td>
-            <td class="msg-preview"><?php echo h($lastMsg); ?></td>
+            <td class="msg-preview"><?php echo h($t['last_message'] ?? ''); ?></td>
             <td><?php echo h(fmt_dt($t['last_time'] ?? '')); ?></td>
             <td>
               <?php if ($unread > 0): ?>
@@ -499,10 +441,6 @@ try {
         <div class="alert alert-info" style="margin-top:12px;">No chat threads found.</div>
       <?php endif; ?>
 
-      <small class="text-muted">
-        ✅ Live updates enabled (no page refresh). New threads/messages will appear automatically.
-      </small>
-
     </div>
   </div>
 
@@ -514,100 +452,11 @@ try {
 <script src="js/bootstrap.min.js"></script>
 <script src="js/jquery.dataTables.min.js"></script>
 <script src="js/dataTables.bootstrap.min.js"></script>
-
 <script>
-(function(){
-  // DataTables init (ONLY once)
-  let dt = null;
-  $(function(){
-    dt = $('#chatTable').DataTable({ pageLength: 10, order:[[3,'desc']] });
-    setTimeout(function(){ $('.alert-success,.alert-danger').fadeOut(); }, 2500);
-  });
-
-  const view   = <?php echo json_encode($view); ?>;
-  const filter = <?php echo json_encode($filter); ?>;
-
-  function escapeHtml(s){
-    return String(s ?? '').replace(/[&<>"']/g, c => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[c]));
-  }
-
-  function renderRows(items){
-    const tbody = document.getElementById('threadsBody');
-    if (!tbody) return;
-
-    let i = 1;
-    const html = (items || []).map(t => {
-      const peerKey = t.peer_key || '';
-      const peerDisplay = t.peer_display || peerKey;
-      const unread = parseInt(t.unread_count || 0, 10);
-      const lastMsg = (t.last_message || '').length > 140 ? (t.last_message || '').slice(0, 140) + '...' : (t.last_message || '');
-      const lastTime = t.last_time_human || '';
-
-      const unreadHtml = unread > 0
-        ? `<span class="unread-dot">${unread}</span>`
-        : `<span class="label label-success">0</span>`;
-
-      const pill = unread > 0 ? `&nbsp;<span class="pill">new</span>` : '';
-
-      const markBtn = unread > 0
-        ? `<a class="btn btn-default btn-xs"
-              href="feedback.php?view=${encodeURIComponent(view)}&filter=${encodeURIComponent(filter)}&mark=${encodeURIComponent(peerKey)}"
-              onclick="return confirm('Mark this thread read?');">
-              <i class="fa fa-check"></i>
-           </a>`
-        : '';
-
-      return `
-        <tr>
-          <td>${i++}</td>
-          <td>${escapeHtml(peerDisplay)}${pill}</td>
-          <td class="msg-preview">${escapeHtml(lastMsg)}</td>
-          <td>${escapeHtml(lastTime)}</td>
-          <td>${unreadHtml}</td>
-          <td>
-            <a class="btn btn-primary btn-xs" href="sendreply.php?reply=${encodeURIComponent(peerKey)}">
-              <i class="fa fa-mail-reply"></i> Reply
-            </a>
-            ${markBtn}
-            <a class="btn btn-danger btn-xs"
-               href="feedback.php?view=${encodeURIComponent(view)}&filter=${encodeURIComponent(filter)}&del=${encodeURIComponent(peerKey)}"
-               onclick="return confirm('Delete this thread?');">
-              <i class="fa fa-trash"></i>
-            </a>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    // If DataTables is active, rebuild via API (prevents UI bugs)
-    if (dt) {
-      dt.clear();
-      const temp = document.createElement('tbody');
-      temp.innerHTML = html;
-      const rows = Array.from(temp.querySelectorAll('tr')).map(tr => Array.from(tr.children).map(td => td.innerHTML));
-      dt.rows.add(rows);
-      dt.order([3,'desc']).draw(false);
-    } else {
-      tbody.innerHTML = html;
-    }
-  }
-
-  async function pollThreads(){
-    try{
-      const r = await fetch(`ajax/threads_poll.php?view=${encodeURIComponent(view)}&filter=${encodeURIComponent(filter)}`, { cache:'no-store' });
-      const d = await r.json();
-      if (!d || !d.ok) return;
-      renderRows(d.threads || []);
-    }catch(e){}
-  }
-
-  // ✅ Live inbox updates (no browser refresh)
-  pollThreads();
-  setInterval(pollThreads, 1500);
-})();
+$(function(){
+  $('#chatTable').DataTable({ pageLength:10, order:[[3,'desc']] });
+  setTimeout(function(){ $('.alert-success,.alert-danger').fadeOut(); }, 2500);
+});
 </script>
-
 </body>
 </html>

@@ -10,6 +10,7 @@ require_once __DIR__ . '/session_admin.php';
 requireAdminLogin();
 
 require_once __DIR__ . '/../controller.php';
+require_once __DIR__ . '/role_helpers.php';
 
 $controller = new Controller();
 $dbh = $controller->pdo();
@@ -77,6 +78,10 @@ $adminLogin  = $user->fullname ?? '';
 $adminRoleId = (int)($user->role ?? 1);
 $roleName    = $roleMap[$adminRoleId] ?? 'Admin';
 
+$rawRoleId = (int)($_SESSION['userRole'] ?? 0);
+$displayRole = ucfirst(roleNameRaw($dbh, $rawRoleId));      // Coach
+$baseRole    = baseRoleName($dbh, $rawRoleId);             // manager
+
 /* ==========================================================
    AVATAR
 ========================================================== */
@@ -105,7 +110,7 @@ window.addEventListener("pageshow", function (event) {
   </h4>
 
   <h4 class="pull-left text-white" style="margin:20px 0 0 20px">
-    Hi, <?php echo htmlentities($displayName); ?>  • <?php echo htmlentities($roleName); ?>
+    Hi, <?php echo htmlentities($displayName); ?>  • <?php echo htmlentities($displayRole); ?>
   </h4>
 
   <span class="menu-btn"><i class="fa fa-bars"></i></span>

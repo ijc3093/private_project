@@ -2,182 +2,120 @@
 require_once __DIR__ . '/session_admin.php';
 requireAdminLogin();
 
-function myRoleId(): int {
-    return (int)($_SESSION['userRole'] ?? 0);
-}
-function myUsername(): string {
-    return trim($_SESSION['admin_login'] ?? '');
-}
-function myAdminId(): int {
-    return (int)($_SESSION['admin_id'] ?? 0);
-}
-function myAdminFriendCode(): string {
-    return trim($_SESSION['admin_friend_code'] ?? '');
-}
-function isAdmin(): bool {
-    return myRoleId() === 1;
+require_once __DIR__ . '/role_helpers.php';
+
+function myRawRoleId(): int {
+  return (int)($_SESSION['userRole'] ?? 0);
 }
 
 /**
- * All internal chat channels this role can receive
+ * Effective/base role id is NOT required if you only use baseRoleName().
+ * But if you want "coach behaves like manager" you can check baseRoleName().
  */
-// function allowedInternalChannelsForMe(): array {
-//     $role = myRoleId();
+function myBaseRoleName(): string {
+    $dbh = adminDbh();
+    return baseRoleName($dbh, myRawRoleId());
+}
 
-//     if ($role === 1) return ['admin_manager','admin_staff','admin_admin']; // Admin internal
-//     if ($role === 2) return ['admin_manager','manager_manager','manager_staff']; // Manager
-//     if ($role === 4) return ['admin_staff','staff_staff','manager_staff']; // Staff
+function isManagerLike(): bool {
+  return myBaseRoleName() === 'manager'; // manager + coach
+}
 
-//     return [];
-// }
+function myUsername(): string {
+  return trim((string)($_SESSION['admin_login'] ?? ''));
+}
 
+function myAdminId(): int {
+  return (int)($_SESSION['admin_id'] ?? 0);
+}
+
+
+/**
+ * myRoleId() = effective/base role id
+ * (coach behaves like manager)
+ */
+function myRoleId(): int {
+    $dbh = adminDbh();
+    return effectiveRoleId($dbh, myRawRoleId());
+}
+
+function myAdminFriendCode(): string {
+    return trim((string)($_SESSION['admin_friend_code'] ?? ''));
+}
+
+
+function isAdmin(): bool {
+    // Admin base role means baseRoleName == 'admin'
+    $dbh = adminDbh();
+    return baseRoleName($dbh, myRawRoleId()) === 'admin';
+}
+
+
+/**
+ * Internal channels allowed by EFFECTIVE/base role
+ * - Admin sees all internal channels
+ * - Manager (and Coach inheriting Manager) sees manager channels
+ * - Staff sees staff channels
+ *
+ * NOTE: these channel strings must match what your internal chat uses in `feedback.channel`.
+ */
 function allowedInternalChannelsForMe(): array {
-    $role = myRoleId();
+    $dbh = adminDbh();
+    $base = baseRoleName($dbh, myRawRoleId());
 
-    if ($role === 1) return ['admin_manager','admin_staff','admin_admin','manager_staff','manager_manager','staff_staff'];
-    if ($role === 2) return ['admin_manager','manager_manager','manager_staff'];
-    if ($role === 4) return ['admin_staff','staff_staff','manager_staff'];
-
+    if ($base === 'admin') {
+        return ['admin_manager','admin_staff','admin_admin','manager_staff','manager_manager','staff_staff'];
+    }
+    if ($base === 'manager') {
+        return ['admin_manager','manager_manager','manager_staff'];
+    }
+    if ($base === 'staff') {
+        return ['admin_staff','staff_staff','manager_staff'];
+    }
     return [];
 }
 
 
 /**
- * Determine chat channel from roles
+ * Determine chat channel from effective roles (base ids)
+ * - Uses BASE role names to decide mapping
  */
-function channelForAdminRoles(int $myRole, int $peerRole): string
+function channelForAdminRoles(int $myEffectiveRoleId, int $peerEffectiveRoleId): string
 {
-    // Admin <-> Manager
-    if (($myRole === 1 && $peerRole === 2) || ($myRole === 2 && $peerRole === 1)) return 'admin_manager';
+    // We need names to decide, because ids may differ by DB.
+    $dbh = adminDbh();
+    $myName   = baseRoleName($dbh, $myEffectiveRoleId);
+    $peerName = baseRoleName($dbh, $peerEffectiveRoleId);
 
-    // Admin <-> Staff
-    if (($myRole === 1 && $peerRole === 4) || ($myRole === 4 && $peerRole === 1)) return 'admin_staff';
+    if ($myName === '' || $peerName === '') return '';
 
-    // Admin <-> Admin
-    if ($myRole === 1 && $peerRole === 1) return 'admin_admin';
-
-    // Manager <-> Manager
-    if ($myRole === 2 && $peerRole === 2) return 'manager_manager';
-
-    // Staff <-> Staff
-    if ($myRole === 4 && $peerRole === 4) return 'staff_staff';
-
-    // ✅ Manager <-> Staff
-    if (($myRole === 2 && $peerRole === 4) || ($myRole === 4 && $peerRole === 2)) return 'manager_staff';
-    
+    if (($myName==='admin' && $peerName==='manager') || ($myName==='manager' && $peerName==='admin')) return 'admin_manager';
+    if (($myName==='admin' && $peerName==='staff')   || ($myName==='staff'   && $peerName==='admin')) return 'admin_staff';
+    if ($myName==='admin'   && $peerName==='admin')   return 'admin_admin';
+    if ($myName==='manager' && $peerName==='manager') return 'manager_manager';
+    if ($myName==='staff'   && $peerName==='staff')   return 'staff_staff';
+    if (($myName==='manager' && $peerName==='staff') || ($myName==='staff' && $peerName==='manager')) return 'manager_staff';
 
     return '';
 }
 
 
-/**
- * Create XXXX-XXXX-XXXX
- */
-function generateFriendCode(int $groups = 3): string {
-    $parts = [];
-    for ($i=0; $i<$groups; $i++) {
-        $parts[] = strtoupper(bin2hex(random_bytes(2))); // 4 chars
-    }
-    return implode('-', $parts);
-}
 
 /**
- * Ensure current admin has a friend_code; generate one if missing.
- * Call this from pages that need it (contacts/add_contact/compose).
- */
-function ensureMyAdminFriendCode(PDO $dbh): string
-{
-    $meId = myAdminId();
-    if ($meId <= 0) return '';
-
-    $st = $dbh->prepare("SELECT friend_code FROM admin WHERE idadmin = :id LIMIT 1");
-    $st->execute([':id' => $meId]);
-    $code = (string)($st->fetchColumn() ?: '');
-
-    if ($code !== '') {
-        $_SESSION['admin_friend_code'] = $code;
-        return $code;
-    }
-
-    for ($i=0; $i<30; $i++) {
-        $new = generateFriendCode();
-        $dup = $dbh->prepare("SELECT idadmin FROM admin WHERE friend_code = :c LIMIT 1");
-        $dup->execute([':c' => $new]);
-        if (!$dup->fetchColumn()) {
-            $upd = $dbh->prepare("UPDATE admin SET friend_code = :c WHERE idadmin = :id LIMIT 1");
-            $upd->execute([':c' => $new, ':id' => $meId]);
-            $_SESSION['admin_friend_code'] = $new;
-            return $new;
-        }
-    }
-
-    return '';
-}
-
-/**
- * Contact lock: must exist to chat
- */
-function isInAdminContacts(PDO $dbh, int $ownerAdminId, int $friendAdminId): bool {
-    $st = $dbh->prepare("
-        SELECT id
-        FROM admin_contacts
-        WHERE owner_admin_id = :o
-          AND friend_admin_id = :f
-        LIMIT 1
-    ");
-    $st->execute([':o' => $ownerAdminId, ':f' => $friendAdminId]);
-    return (bool)$st->fetchColumn();
-}
-
-
-/**
- * Which "notireceiver" values belong to me in notification table?
- *
- * Your notification table uses strings like:
- * - 'Admin' for user->admin notifications
- * - admin usernames for internal notifications
- * - sometimes you may also want email (optional)
- */
-// function myNotificationReceiverKeys(): array
-// {
-//     $keys = [];
-
-//     // Internal notifications for admin/staff/manager accounts:
-//     $u = myUsername();
-//     if ($u !== '') $keys[] = $u;
-
-//     // Support-center notifications for Admin only
-//     if (isAdmin()) $keys[] = 'Admin';
-
-//     // IMPORTANT:
-//     // Do NOT include admin_email here,
-//     // because public user-to-user notifications are addressed to emails.
-//     // This prevents "friend sends friend" notifications from appearing in admin.
-
-//     return array_values(array_unique(array_filter($keys)));
-// }
-
-/**
- * Role-based notification receiver keys.
- * notification.notireceiver should store role labels:
- *  Admin / Manager / Gospel / Staff
+ * Notification receiver keys (role labels) — using effective role.
+ * Admin sees all; Coach inherits Manager => sees Manager only.
  */
 function myNotificationReceiverKeys(): array
 {
-    $role = myRoleId(); // 1 Admin, 2 Manager, 3 Gospel, 4 Staff
+    $role = myRoleId(); // effective/base
 
-    if ($role === 1) return ['Admin', 'Manager', 'Gospel', 'Staff']; // Admin sees all
-    if ($role === 2) return ['Manager'];                             // Manager only
-    if ($role === 3) return ['Gospel'];                              // Gospel only
-    if ($role === 4) return ['Staff'];                               // Staff only
-
+    if ($role === 1) return ['Admin', 'Manager', 'Gospel', 'Staff'];
+    if ($role === 2) return ['Manager'];
+    if ($role === 3) return ['Gospel'];
+    if ($role === 4) return ['Staff'];
     return [];
 }
 
-
-/**
- * Determine if the notireceiver belongs to this logged-in admin account.
- */
 function isMyNotificationReceiver(string $receiver): bool
 {
     $receiver = trim($receiver);
@@ -187,24 +125,25 @@ function isMyNotificationReceiver(string $receiver): bool
 
 
 /**
- * Generate friend code like XXXX-XXXX-XXXX
+ * Friend code generator: XXXX-XXXX-XXXX
  */
-function generateAdminFriendCode(): string {
-    return strtoupper(
-        substr(bin2hex(random_bytes(2)), 0, 4) . '-' .
-        substr(bin2hex(random_bytes(2)), 0, 4) . '-' .
-        substr(bin2hex(random_bytes(2)), 0, 4)
-    );
+function generateFriendCode(int $groups = 3): string {
+    $parts = [];
+    for ($i = 0; $i < $groups; $i++) {
+        $parts[] = strtoupper(bin2hex(random_bytes(2))); // 4 chars
+    }
+    return implode('-', $parts);
 }
 
 /**
- * Ensure admin has friend code
+ * Ensure friend_code exists in admin table.
+ * Uses admin.friend_code (as in your earlier code).
  */
-function ensureAdminFriendCode(PDO $dbh): string {
+function ensureAdminFriendCode(PDO $dbh): string
+{
     $adminId = myAdminId();
     if ($adminId <= 0) return '';
 
-    // already exists?
     $st = $dbh->prepare("SELECT friend_code FROM admin WHERE idadmin = :id LIMIT 1");
     $st->execute([':id' => $adminId]);
     $code = trim((string)$st->fetchColumn());
@@ -215,8 +154,9 @@ function ensureAdminFriendCode(PDO $dbh): string {
     }
 
     // generate unique
-    for ($i = 0; $i < 20; $i++) {
-        $new = generateAdminFriendCode();
+    for ($i = 0; $i < 30; $i++) {
+        $new = generateFriendCode();
+
         $chk = $dbh->prepare("SELECT idadmin FROM admin WHERE friend_code = :c LIMIT 1");
         $chk->execute([':c' => $new]);
 
@@ -231,4 +171,3 @@ function ensureAdminFriendCode(PDO $dbh): string {
 
     return '';
 }
-

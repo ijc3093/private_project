@@ -7,6 +7,7 @@ ini_set('display_errors', 1);
 
 require_once __DIR__ . '/controller.php';
 require_once __DIR__ . '/includes/identity.php';
+//require_once __DIR__ . '/includes/friend_code_helpers.php'; // ✅ ADD THIS
 
 $controller = new Controller();
 $dbh = $controller->pdo(); // ✅ FIX: define $dbh BEFORE using it
