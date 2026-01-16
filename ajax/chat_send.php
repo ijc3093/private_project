@@ -13,16 +13,16 @@ header("Pragma: no-cache");
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$meEmail = myUserEmail();
-if ($meEmail === '' || !filter_var($meEmail, FILTER_VALIDATE_EMAIL)) {
-    echo json_encode(['ok' => false, 'error' => 'Invalid session identity']);
+$meFc = trim((string)($_SESSION['user_friend_code'] ?? ''));
+if ($meFc === '') {
+    echo json_encode(['ok' => false, 'error' => 'Invalid session (missing friend_code)']);
     exit;
 }
 
-$peer = trim((string)($_POST['peer'] ?? ''));
-$text = trim((string)($_POST['message'] ?? ''));
+$peerFc = trim((string)($_POST['peer'] ?? ''));     // ✅ friend_code
+$text   = trim((string)($_POST['message'] ?? ''));
 
-if ($peer === '' || !filter_var($peer, FILTER_VALIDATE_EMAIL)) {
+if ($peerFc === '') {
     echo json_encode(['ok' => false, 'error' => 'Invalid peer']);
     exit;
 }
@@ -31,10 +31,8 @@ $attachment = null;
 
 // Attachment upload (optional)
 try {
-    $folder = dirname(__DIR__) . "/attachment/"; // /Business_only3/attachment/
-    if (!is_dir($folder)) {
-        mkdir($folder, 0755, true);
-    }
+    $folder = dirname(__DIR__) . "/attachment/";
+    if (!is_dir($folder)) mkdir($folder, 0755, true);
 
     if (!empty($_FILES['attachment']['name'])) {
         $file     = (string)$_FILES['attachment']['name'];
@@ -74,8 +72,8 @@ try {
         VALUES (:s, :r, 'user_user', 'Chat', :d, :a, 0)
     ");
     $stmt->execute([
-        ':s' => $meEmail,
-        ':r' => $peer,
+        ':s' => $meFc,
+        ':r' => $peerFc,
         ':d' => $text,
         ':a' => $attachment
     ]);
@@ -86,8 +84,8 @@ try {
         'ok' => true,
         'message' => [
             'id' => $newId,
-            'sender' => $meEmail,
-            'receiver' => $peer,
+            'sender' => $meFc,
+            'receiver' => $peerFc,
             'feedbackdata' => $text,
             'attachment' => $attachment,
             'created_at' => date('Y-m-d H:i:s')

@@ -146,9 +146,9 @@ function fmt_dt($dt) {
 </head>
 <body>
 
-<?php include __DIR__ . '/includes/header.php'; ?>
+
 <div class="ts-main-content">
-<?php include __DIR__ . '/includes/leftbar.php'; ?>
+
 
 <div class="content-wrapper">
 <div class="container-fluid">
@@ -264,7 +264,7 @@ $(function(){
     const id = $(this).data('id');
     if (!confirm('Mark this notification as read?')) return;
 
-    $.post('/Business_only3/ajax/user_mark_read.php', { id: id }, function(resp){
+    $.post('/Business_only/ajax/user_mark_read.php', { id: id }, function(resp){
       if (resp && resp.ok) location.reload();
       else alert(resp.error || 'Failed to mark read');
     }, 'json').fail(function(){
@@ -276,7 +276,7 @@ $(function(){
   $('#btnMarkAll').on('click', function(){
     if (!confirm('Mark ALL notifications as read?')) return;
 
-    $.post('/Business_only3/ajax/user_mark_all_read.php', {}, function(resp){
+    $.post('/Business_only/ajax/user_mark_all_read.php', {}, function(resp){
       if (resp && resp.ok) location.reload();
       else alert(resp.error || 'Failed to mark all read');
     }, 'json').fail(function(){

@@ -8,9 +8,9 @@ ini_set('display_errors', '1');
 
 $error = '';
 
-// already logged in -> dashboard
+// already logged in -> feed
 if (!empty($_SESSION['user_login']) && !empty($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+    header("Location: feed.php");
     exit;
 }
 
@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 // ✅ this function must exist in includes/session_user.php
                 setUserSession($user);
 
-                header("Location: dashboard.php");
+                header("Location: feed.php");
                 exit;
             } else {
                 $error = "Invalid login credentials or account inactive.";
@@ -42,57 +42,111 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     }
 }
 ?>
-<!doctype html>
-<html lang="en" class="no-js">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login</title>
 
-  <link rel="stylesheet" href="css/font-awesome.min.css">
-  <link rel="stylesheet" href="css/bootstrap.min.css">
-  <link rel="stylesheet" href="css/style.css">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Favicon -->
+    <link href="assets/images/favicon.png" rel="icon" type="image/png">
+
+    <!-- title and description-->
+    <title>Socialite</title>
+    <meta name="description" content="Socialite - Social sharing network HTML Template">
+   
+    <!-- css files -->
+    <link rel="stylesheet" href="assets/css/tailwind.css">
+    <link rel="stylesheet" href="assets/css/style.css">  
+    
+    <!-- google font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+ 
 </head>
 <body>
-<div class="login-page bk-img">
-  <div class="form-content">
-    <div class="container">
-      <div class="row">
-        <div class="col-md-6 col-md-offset-3">
-          <h1 class="text-center text-bold mt-4x">Login</h1>
 
-          <div class="well row pt-2x pb-3x bk-light">
-            <div class="col-md-8 col-md-offset-2">
+  <div class="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-slate-950">
+    
+    <div class="relative w-full max-w-[450px] p-10 bg-white shadow-xl rounded-2xl dark:bg-slate-900 z-10 mx-4">
 
-              <?php if ($error !== ''): ?>
-                <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
-              <?php endif; ?>
+      <div class="w-full space-y-10" uk-scrollspy="target: > *; cls: uk-animation-scale-up; delay: 100; repeat: true">
 
-              <form method="post" autocomplete="off">
-                <label class="text-uppercase text-sm">Username or Email</label>
-                <input type="text" placeholder="Username or Email" name="username" class="form-control mb" required>
+        <div>
+          <h2 class="text-2xl font-semibold mb-1.5"> Sign in to your account </h2>
+        </div>
+ 
+        <?php if ($error !== ''): ?>
+            <div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400" role="alert">
+                <?php echo htmlentities($error); ?>
+            </div>
+        <?php endif; ?>
 
-                <label class="text-uppercase text-sm">Password</label>
-                <input type="password" placeholder="Password" name="password" class="form-control mb" required>
+        <form method="post" autocomplete="off" class="space-y-7 text-sm text-black font-medium dark:text-white">
+            
+          <div>
+              <label class="">Username</label>
+              <div class="mt-2.5">
+                  <input name="username" type="text" autofocus="" class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required> 
+              </div>
+          </div>
 
-                <button class="btn btn-primary btn-block" name="login" type="submit" value="1">LOGIN</button>
-                <div style="margin-top:10px;text-align:center;"><a href="forgot.php">Forgot password?</a></div>
-              </form>
-
-              <br>
-              <p>Don't Have an Account? <a href="register.php">Signup</a></p>
-
+          <div>
+            <label class="">Password</label>
+            <div class="mt-2.5">
+                <input name="password" type="password" class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required>  
             </div>
           </div>
 
-        </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <input id="rememberme" name="rememberme" type="checkbox" class="rounded border-gray-300">
+              <label for="rememberme" class="font-normal">Remember me</label>
+            </div>
+            
+          </div>
+          <a href="forget.php" class="text-blue-700">Forgot password?</a>
+          <div>
+            <button name="login" type="submit" value="1" class="button bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded-lg transition-colors">
+                Sign in
+            </button>
+          </div>
+          <p class="text-sm text-gray-700 font-normal dark:text-gray-400">
+            If you haven’t signed up yet. <a href="register.php" class="text-blue-700">Register here!</a> 
+          </p>
+        </form>
       </div>
     </div>
-  </div>
 </div>
+  
+   
+    <!-- Uikit js you can use cdn  https://getuikit.com/docs/installation  or fine the latest  https://getuikit.com/docs/installation -->
+    <script src="assets/js/uikit.min.js"></script>
+    <script src="assets/js/script.js"></script>
 
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+    <!-- Ion icon -->
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+      <!-- Dark mode -->
+      <script>
+        // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark')
+        } else {
+        document.documentElement.classList.remove('dark')
+        }
+
+        // Whenever the user explicitly chooses light mode
+        localStorage.theme = 'light'
+
+        // Whenever the user explicitly chooses dark mode
+        localStorage.theme = 'dark'
+
+        // Whenever the user explicitly chooses to respect the OS preference
+        localStorage.removeItem('theme')
+    </script>
+
 </body>
 </html>

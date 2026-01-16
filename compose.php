@@ -1,5 +1,7 @@
 <?php
 // /Business_only3/compose.php
+declare(strict_types=1);
+
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
@@ -11,189 +13,137 @@ ini_set('display_errors', '1');
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-// ✅ Use the correct helper names from session_user.php
 $meId    = myUserId();
-$meEmail = myUserEmail();
+$meCode  = function_exists('userFriendCode') ? trim((string)userFriendCode()) : trim((string)($_SESSION['user_friend_code'] ?? ''));
+$myRole  = function_exists('userRoleId') ? (int)userRoleId() : (int)($_SESSION['user_role'] ?? 0);
 
-if ($meId <= 0 || $meEmail === '') {
+if ($meId <= 0 || $meCode === '') {
     clearUserSession();
-    header("Location: index.php");
+    header("Location: index.php?session=reset");
     exit;
 }
 
-$msg = '';
 $error = '';
-
-$prefillTo = trim($_GET['to'] ?? '');
+$prefillTo = trim((string)($_GET['to'] ?? ''));
 
 /**
- * ✅ Resolve To value (USER-ONLY CHAT)
- * Allowed input:
- * - friend_code => users.email
- * - username    => users.email
- * - email       => users.email
- *
- * ❌ Admin/support is NOT allowed anymore
+ * Friend-code ONLY recipient resolver
+ * Returns: ok, peerCode
  */
-function resolveRecipient(PDO $dbh, string $to, int $myRole, string $meEmail): array
+function resolveRecipientFriendCode(PDO $dbh, string $peerCode, string $meCode, int $myRole): array
 {
-    $to = trim($to);
+    $peerCode = trim($peerCode);
 
-    if ($to === '') {
-        return ['mode' => 'error', 'error' => 'Recipient is required.'];
+    if ($peerCode === '') {
+        return ['ok' => false, 'error' => 'Friend code is required.'];
     }
 
-    // ❌ Block Admin/support keywords
-    $blocked = ['admin', 'support', 'support center'];
-    foreach ($blocked as $b) {
-        if (strcasecmp($to, $b) === 0) {
-            return ['mode' => 'error', 'error' => 'Users cannot message Admin/Support. Please message a user only.'];
-        }
+    // Basic format guard
+    if (!preg_match('/^[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $peerCode)) {
+        return ['ok' => false, 'error' => 'Invalid friend code format (example: USR-AB12-CD34).'];
     }
 
-    // If looks like email
-    if (strpos($to, '@') !== false) {
-        if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
-            return ['mode' => 'error', 'error' => 'Invalid email format.'];
-        }
-
-        $st = $dbh->prepare("SELECT id, email, role, status FROM users WHERE email = :e LIMIT 1");
-        $st->execute([':e' => $to]);
-        $u = $st->fetch(PDO::FETCH_ASSOC);
-
-        if (!$u) return ['mode' => 'error', 'error' => 'User email not found.'];
-        if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
-
-        // Optional: enforce same-role chat only
-        if ((int)$u['role'] !== $myRole) {
-            return ['mode' => 'error', 'error' => 'You can only chat with users in your same role.'];
-        }
-
-        if (strcasecmp($u['email'], $meEmail) === 0) {
-            return ['mode' => 'error', 'error' => 'You cannot message yourself.'];
-        }
-
-        return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['email']];
+    // Prevent self
+    if (strcasecmp($peerCode, $meCode) === 0) {
+        return ['ok' => false, 'error' => 'You cannot message yourself.'];
     }
 
-    // Try friend_code
-    $st = $dbh->prepare("SELECT id, email, friend_code, role, status FROM users WHERE friend_code = :fc LIMIT 1");
-    $st->execute([':fc' => $to]);
+    $st = $dbh->prepare("SELECT id, friend_code, role, status FROM users WHERE friend_code = ? LIMIT 1");
+    $st->execute([$peerCode]);
     $u = $st->fetch(PDO::FETCH_ASSOC);
 
-    if ($u) {
-        if ((int)$u['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
+    if (!$u) return ['ok' => false, 'error' => 'Friend code not found.'];
+    if ((int)($u['status'] ?? 0) !== 1) return ['ok' => false, 'error' => 'User account is inactive.'];
 
-        if ((int)$u['role'] !== $myRole) {
-            return ['mode' => 'error', 'error' => 'You can only chat with users in your same role.'];
-        }
-
-        if (strcasecmp($u['email'], $meEmail) === 0) {
-            return ['mode' => 'error', 'error' => 'You cannot message yourself.'];
-        }
-
-        return ['mode' => 'user', 'email' => $u['email'], 'label' => $u['friend_code'] ?: $u['email']];
+    // OPTIONAL rule: same role only (keep if you want)
+    if ((int)($u['role'] ?? 0) !== $myRole) {
+        return ['ok' => false, 'error' => 'You can only chat with users in your same role.'];
     }
 
-    // Try username (optional)
-    $st2 = $dbh->prepare("SELECT id, email, username, role, status FROM users WHERE username = :u LIMIT 1");
-    $st2->execute([':u' => $to]);
-    $u2 = $st2->fetch(PDO::FETCH_ASSOC);
-
-    if ($u2) {
-        if ((int)$u2['status'] !== 1) return ['mode' => 'error', 'error' => 'User account is inactive.'];
-
-        if ((int)$u2['role'] !== $myRole) {
-            return ['mode' => 'error', 'error' => 'You can only chat with users in your same role.'];
-        }
-
-        if (strcasecmp($u2['email'], $meEmail) === 0) {
-            return ['mode' => 'error', 'error' => 'You cannot message yourself.'];
-        }
-
-        return ['mode' => 'user', 'email' => $u2['email'], 'label' => $u2['username'] ?: $u2['email']];
-    }
-
-    return ['mode' => 'error', 'error' => 'Recipient not found (use friend code, username, or email).'];
+    return ['ok' => true, 'peerCode' => (string)$u['friend_code']];
 }
 
-$myRole = myUserRoleId();
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $to = trim($_POST['to'] ?? '');
+    $to = trim((string)($_POST['to'] ?? ''));
 
-    $res = resolveRecipient($dbh, $to, $myRole, $meEmail);
+    $res = resolveRecipientFriendCode($dbh, $to, $meCode, $myRole);
 
-    if (($res['mode'] ?? '') === 'error') {
-        $error = $res['error'] ?? 'Invalid recipient.';
+    if (!$res['ok']) {
+        $error = (string)($res['error'] ?? 'Invalid recipient.');
     } else {
-        // ✅ Always redirect with peer email (user-user only)
-        $reply = $res['email'];
-        header("Location: user_sendreply.php?reply=" . urlencode($reply));
+        // ✅ IMPORTANT: send friend_code to sendreply
+        header("Location: user_sendreply.php?to=" . urlencode($res['peerCode']));
+
         exit;
     }
 }
 ?>
-<!doctype html>
-<html lang="en" class="no-js">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>New Message</title>
-
-  <link rel="stylesheet" href="css/font-awesome.min.css">
-  <link rel="stylesheet" href="css/bootstrap.min.css">
-  <link rel="stylesheet" href="css/style.css">
-
-  <style>
-    .box{background:#fff;border:1px solid #ddd;border-radius:8px;padding:18px;}
-    .hint{color:#777;font-size:13px;}
-  </style>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="assets/images/favicon.png" rel="icon" type="image/png">
+    <title>New Message</title>
+    <link rel="stylesheet" href="assets/css/tailwind.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .box{background:#4b3d3d;border:1px solid #756060;border-radius:8px;padding:18px;box-shadow:0 4px 8px rgba(0,0,0,0.2);transition:.3s;margin-right:3%}
+        .hint{color:#777;font-size:13px}
+        .card{background-color:#3f3434}
+        .bgtransparent{background-color:#3f3434}
+        .page-title{margin-top:15%;margin-bottom:15px}
+        .btn-btn-primary,.btn{display:inline-block;margin-bottom:0;font-weight:normal;text-align:center;vertical-align:middle;cursor:pointer;border:1px solid transparent;white-space:nowrap;padding:12px 16px;font-size:14px;line-height:1.42857143;border-radius:4px;user-select:none;background:#806449;margin-top:15px}
+    </style>
 </head>
 <body>
+<div id="wrapper">
 
-<?php include __DIR__ . '/includes/header.php'; ?>
-<div class="ts-main-content">
-<?php include __DIR__ . '/includes/leftbar.php'; ?>
+    <?php include __DIR__ . '/includes/header.php'; ?>
 
-<div class="content-wrapper">
-<div class="container-fluid">
-
-  <h2 class="page-title">New Message</h2>
-
-  <?php if ($error): ?>
-    <div class="alert alert-danger"><?php echo htmlentities($error); ?></div>
-  <?php endif; ?>
-
-  <div class="box">
-    <form method="post" autocomplete="off">
-      <div class="form-group">
-        <label>To</label>
-        <input type="text" name="to" class="form-control"
-               value="<?php echo htmlentities($prefillTo); ?>"
-               placeholder="Friend code, username, or email" required>
-
-        <div class="hint" style="margin-top:8px;">
-          Allowed: <b>Friend code</b>, <b>Username</b>, or <b>Email</b> (user only).<br>
-          Admin/Support messaging is disabled.
+    <div id="site__sidebar" class="fixed top-0 left-0 z-[99] pt-[--m-top] overflow-hidden transition-transform xl:duration-500 max-xl:w-full max-xl:-translate-x-full">
+        <div class="p-2 max-xl:bg-white shadow-sm 2xl:w-72 sm:w-64 w-[80%] h-[calc(100vh-64px)] relative z-30 max-lg:border-r dark:max-xl:!bg-slate-700 dark:border-slate-700">
+            <div class="pr-4" data-simplebar>
+                <?php include __DIR__ . '/includes/leftbar.php'; ?>
+            </div>
         </div>
-      </div>
+        <div id="site__sidebar__overly" class="absolute top-0 left-0 z-20 w-screen h-screen xl:hidden backdrop-blur-sm" uk-toggle="target: #site__sidebar ; cls :!-translate-x-0"></div>
+    </div>
 
-      <button class="btn btn-primary" type="submit">
-        <i class="fa fa-paper-plane"></i> Start Chat
-      </button>
+    <main id="site__main" class="2xl:ml-[--w-side] xl:ml-[--w-side-sm] p-2.5 h-[calc(100vh-var(--m-top))] mt-[--m-top]">
+        <?php if ($error): ?>
+            <div class="p-3 mb-3 text-sm text-red-600 bg-red-50 rounded"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
+        <?php endif; ?>
 
-      <a class="btn btn-default" href="contacts.php" style="margin-left:8px;">
-        View Contacts
-      </a>
-    </form>
-  </div>
+        <h2 class="page-title">New Message</h2>
 
+        <div class="box">
+            <form method="post" autocomplete="off">
+                <div class="form-group">
+                    <label>To</label>
+                    <input type="text" name="to"
+                           class="w-full !pl-10 !font-normal bgtransparent h-12 !text-sm card"
+                           value="<?php echo htmlspecialchars($prefillTo, ENT_QUOTES, 'UTF-8'); ?>"
+                           placeholder="Friend code only (ex: USR-AB12-CD34)" required>
+
+                    <div class="hint" style="margin-top:8px;">
+                        Allowed: <b>Friend code</b> only.
+                    </div>
+                </div>
+
+                <button class="btn-btn-primary" type="submit">Start Chat</button>
+                <a class="btn btn-default" href="contacts.php" style="margin-left:8px;">View Contacts</a>
+            </form>
+        </div>
+    </main>
 </div>
-</div>
-</div>
 
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="assets/js/uikit.min.js"></script>
+<script src="assets/js/simplebar.js"></script>
+<script src="assets/js/script.js"></script>
+<script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+<script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
 </body>
 </html>

@@ -131,126 +131,178 @@ if (isset($_POST['submit'])) {
     }
 }
 ?>
-<!doctype html>
-<html lang="en" class="no-js">
+<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Register</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <link rel="stylesheet" href="css/font-awesome.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <!-- Favicon -->
+    <link href="assets/images/favicon.png" rel="icon" type="image/png">
 
-    <script>
-      function validate(){
-        var image_file = document.regform.image.value;
-        if (!image_file) return true;
-        var allowed = ["jpg","jpeg","png"];
-        var ext = image_file.split('.').pop().toLowerCase();
-        if (allowed.indexOf(ext) !== -1) return true;
-        alert("Image Extension Not Valid (Use jpg, jpeg, png)");
-        return false;
-      }
-    </script>
-
-    <style>
-      .errorWrap { padding: 10px; margin: 0 0 15px 0; background: #dd3d36; color: #fff; }
-      .succWrap  { padding: 10px; margin: 0 0 15px 0; background: #5cb85c; color: #fff; }
-    </style>
+    <!-- title and description-->
+    <title>Socialite</title>
+    <meta name="description" content="Socialite - Social sharing network HTML Template">
+   
+    <!-- css files -->
+    <link rel="stylesheet" href="assets/css/tailwind.css">
+    <link rel="stylesheet" href="assets/css/style.css">  
+    
+    <!-- google font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+ 
 </head>
 <body>
-<div class="login-page bk-img">
-  <div class="form-content">
-    <div class="container">
-      <div class="row">
-        <div class="col-md-12">
 
-          <h1 class="text-center text-bold mt-2x">Register</h1>
-          <div class="hr-dashed"></div>
+  <div class="sm:flex">
+    
+    <div class="relative lg:w-[580px] md:w-96 w-full p-10 min-h-screen bg-white shadow-xl flex items-center pt-10 dark:bg-slate-900 z-10">
 
-          <div class="well row pt-2x pb-3x bk-light text-center">
-            <div class="col-md-10 col-md-offset-1">
+      <div class="w-full lg:max-w-sm mx-auto space-y-10" uk-scrollspy="target: > *; cls: uk-animation-scale-up; delay: 100 ;repeat: true">
 
-              <?php if ($error): ?>
-                <div class="errorWrap"><strong>ERROR</strong>: <?php echo htmlentities($error); ?></div>
-              <?php elseif ($msg): ?>
-                <div class="succWrap"><strong>SUCCESS</strong>: <?php echo htmlentities($msg); ?></div>
-              <?php endif; ?>
+        <!-- logo image-->
+        <a href="#"> <img src="assets/images/logo.png" class="w-28 absolute top-10 left-10 dark:hidden" alt=""></a>
+        <a href="#"> <img src="assets/images/logo-light.png" class="w-28 absolute top-10 left-10 hidden dark:!block" alt=""></a>
 
-              <form method="post" class="form-horizontal" enctype="multipart/form-data" name="regform" onsubmit="return validate();">
+        <!-- logo icon optional -->
+        <div class="hidden">
+          <img class="w-12" src="assets/images/logo-icon.png" alt="Socialite html template">
+        </div>
 
-                <div class="form-group">
-                  <label class="col-sm-2 control-label">Full Name *</label>
-                  <div class="col-sm-4">
-                    <input type="text" name="name" class="form-control" required>
-                  </div>
+        <!-- title -->
+        <div>
+          <h2 class="text-2xl font-semibold mb-1.5"> Sign up to get started </h2>
+          <p class="text-sm text-gray-700 font-normal">If you already have an account, <a href="index.php" class="text-blue-700">Login here!</a></p>
+        </div>
+ 
+        <?php if ($error): ?>
+          <div class="errorWrap"><strong>ERROR</strong>: <?php echo htmlentities($error); ?></div>
+        <?php elseif ($msg): ?>
+          <div class="succWrap"><strong>SUCCESS</strong>: <?php echo htmlentities($msg); ?></div>
+        <?php endif; ?>
 
-                  <label class="col-sm-2 control-label">Email *</label>
-                  <div class="col-sm-4">
-                    <input type="email" name="email" class="form-control" required>
-                  </div>
+            <!-- form -->
+            <form method="post" action="#" class="space-y-7 text-sm text-black font-medium dark:text-white"  uk-scrollspy="target: > *; cls: uk-animation-scale-up; delay: 100 ;repeat: true" enctype="multipart/form-data" name="regform" onsubmit="return validate();">
+                
+            <div class="grid grid-cols-2 gap-4 gap-y-7">
+        
+                <!-- Full name -->
+                <div>
+                    <label class="">Full name *</label>
+                    <div class="mt-2.5">
+                        <input name="name" type="text"  autofocus="" class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required> 
+                    </div>
                 </div>
 
-                <div class="form-group">
-                  <label class="col-sm-2 control-label">Username *</label>
-                  <div class="col-sm-4">
-                    <input type="text" name="username" class="form-control" required>
-                  </div>
-
-                  <label class="col-sm-2 control-label">Password *</label>
-                  <div class="col-sm-4">
-                    <input type="password" name="password" class="form-control" required>
-                  </div>
+                <!-- Email Address -->
+                <div>
+                    <label for="email" class="">Email Address *</label>
+                    <div class="mt-2.5">
+                        <input name="email" type="email" class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required> 
+                    </div>
                 </div>
 
-                <div class="form-group">
-                  <label class="col-sm-2 control-label">Gender *</label>
-                  <div class="col-sm-4">
-                    <select name="gender" class="form-control" required>
-                      <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-
-                  <label class="col-sm-2 control-label">Phone *</label>
-                  <div class="col-sm-4">
-                    <input type="text" name="mobileno" class="form-control" required>
-                  </div>
+                <!-- Username -->
+                <div>
+                <label class="">Username *</label>
+                <div class="mt-2.5">
+                    <input name="username" type="username"  class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required>  
+                </div>
                 </div>
 
-                <div class="form-group">
-                  <label class="col-sm-2 control-label">Avatar</label>
-                  <div class="col-sm-4">
-                    <input type="file" name="image" class="form-control">
-                    <small>Allowed: jpg, jpeg, png</small>
-                  </div>
-
-                  <label class="col-sm-2 control-label">Designation *</label>
-                  <div class="col-sm-4">
-                    <input type="text" name="designation" class="form-control" required>
-                  </div>
+                <!-- Password -->
+                <div>
+                    <label class="">Password *</label>
+                    <div class="mt-2.5">
+                        <input name="password" type="password"  class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required>  
+                    </div>
                 </div>
 
-                <br>
-                <button class="btn btn-primary" name="submit" type="submit">Register</button>
-              </form>
+                <!-- Gender -->
+                <div>
+                <label class="">Gender *</label>
+                <div class="mt-2.5">
+                    <select name="gender" type="text"  class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" class="form-control" required>
+                        <option value="">Select</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        </select>
+                </div>
+                </div>
 
-              <br><br>
-              <p>Already Have Account? <a href="index.php">Signin</a></p>
+                <!-- Phone -->
+                <div>
+                    <label class="">Phone *</label>
+                    <div class="mt-2.5">
+                        <input name="mobileno" type="text"  class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required>  
+                    </div>
+                </div>
+
+
+                <!-- Upload Image -->
+                <div>
+                    <label class="">Avatar *</label>
+                    <div class="mt-2.5">
+                        <input type="file" name="image"  class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required>  
+                        <small>Allowed: jpg, jpeg, png</small>
+                    </div>
+                </div>
+                
+                <!-- Designation -->
+                <div>
+                    <label class="">Designation *</label>
+                    <div class="mt-2.5">
+                        <input name="designation" type="text"  class="!w-full !rounded-lg !bg-transparent !shadow-sm !border-slate-200 dark:!border-slate-800 dark:!bg-white/5" required>  
+                    </div>
+                </div>
+
+                <div class="col-span-2">
+                <label class="inline-flex items-center" id="rememberme">
+                    <input type="checkbox" id="accept-terms" class="!rounded-md accent-red-800" />
+                    <span class="ml-2">you agree to our <a href="#" class="text-blue-700 hover:underline">terms of use </a> </span>
+                </label>
+                </div>
+
+
+                <!-- submit button -->
+                <div class="col-span-2">
+                <button name="submit" type="submit" class="button bg-primary text-white w-full">Create</button>
+                </div>
 
             </div>
-          </div>
-
+            </form>
         </div>
-      </div>
+        </div>
     </div>
-  </div>
-</div>
+  
+   
+    <!-- Uikit js you can use cdn  https://getuikit.com/docs/installation  or fine the latest  https://getuikit.com/docs/installation -->
+    <script src="assets/js/uikit.min.js"></script>
+    <script src="assets/js/script.js"></script>
 
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+    <!-- Ion icon -->
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+      <!-- Dark mode -->
+      <script>
+        // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark')
+        } else {
+        document.documentElement.classList.remove('dark')
+        }
+
+        // Whenever the user explicitly chooses light mode
+        localStorage.theme = 'light'
+
+        // Whenever the user explicitly chooses dark mode
+        localStorage.theme = 'dark'
+
+        // Whenever the user explicitly chooses to respect the OS preference
+        localStorage.removeItem('theme')
+    </script>
+
 </body>
 </html>

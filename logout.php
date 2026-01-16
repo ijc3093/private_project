@@ -4,7 +4,7 @@ require_once __DIR__ . '/admin/controller.php';
 
 $controller = new Controller();
 $username = (string)($_SESSION['user_name'] ?? '');
-$controller->logSecurity('user_logout', true, myUserEmail(), $username);
+$controller->logSecurity('user_logout', true, userUsername(), $username);
 
 clearUserSession();
 header("Location: index.php");
