@@ -1,262 +1,264 @@
--- phpMyAdmin SQL Dump
--- version 5.2.3
--- https://www.phpmyadmin.net/
---
--- Host: localhost:8889
--- Generation Time: Jan 07, 2026 at 04:55 PM
--- Server version: 8.0.44
--- PHP Version: 8.3.28
+-- Cleaned + normalized schema for `private_project`
+-- Generated: 2026-01-17
+-- Notes:
+-- 1) Uses InnoDB everywhere (required for FKs).
+-- 2) Removes duplicate redundant UNIQUE keys from the dump (keeps one per logical constraint).
+-- 3) Adds foreign keys AFTER cleanup checks to avoid error #1452.
+-- 4) Includes optional "contact alias" support using existing `user_contacts` table.
 
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
+SET SQL_MODE = 'STRICT_ALL_TABLES';
+SET time_zone = '+00:00';
 
+CREATE DATABASE IF NOT EXISTS `private_project`
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_unicode_ci;
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
+USE `private_project`;
 
---
--- Database: `private_project`
---
+-- ----------------------------
+-- ROLE (single source of truth)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `role` (
+  `idrole` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(50) NOT NULL,
+  `inherits_from` int DEFAULT NULL,
+  `status` tinyint NOT NULL DEFAULT 1,
+  PRIMARY KEY (`idrole`),
+  UNIQUE KEY `uq_role_name` (`name`),
+  KEY `idx_role_inherits` (`inherits_from`),
+  CONSTRAINT `fk_role_inherits`
+    FOREIGN KEY (`inherits_from`) REFERENCES `role` (`idrole`)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
-
---
--- Table structure for table `admin`
---
-
-CREATE TABLE `admin` (
-  `idadmin` int NOT NULL,
-  `fullname` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `username` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `friend_code` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `gender` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `mobile` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `designation` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `role` int NOT NULL,
-  `image` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'default.jpg',
+-- ----------------------------
+-- USERS
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `username` varchar(50) DEFAULT NULL,
+  `friend_code` varchar(20) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `gender` varchar(50) NOT NULL,
+  `mobile` varchar(50) NOT NULL,
+  `designation` varchar(255) NOT NULL DEFAULT '',
+  `role` int NOT NULL DEFAULT 4,
+  `image` varchar(100) NOT NULL DEFAULT 'default.jpg',
   `image_blob` longblob,
-  `image_type` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `status` tinyint NOT NULL DEFAULT '1',
+  `image_type` varchar(100) DEFAULT NULL,
+  `status` tinyint NOT NULL DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `force_password_change` tinyint(1) DEFAULT '1',
+  `last_seen` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_users_email` (`email`),
+  UNIQUE KEY `uq_users_friend_code` (`friend_code`),
+  UNIQUE KEY `uq_users_username` (`username`),
+  KEY `idx_users_role` (`role`),
+  KEY `idx_last_seen` (`last_seen`),
+  CONSTRAINT `fk_users_role`
+    FOREIGN KEY (`role`) REFERENCES `role` (`idrole`)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- ADMIN
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `admin` (
+  `idadmin` int NOT NULL AUTO_INCREMENT,
+  `fullname` varchar(20) DEFAULT NULL,
+  `username` varchar(100) NOT NULL,
+  `friend_code` varchar(20) DEFAULT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `gender` varchar(50) DEFAULT NULL,
+  `mobile` varchar(50) DEFAULT NULL,
+  `designation` varchar(50) DEFAULT NULL,
+  `role` int NOT NULL,
+  `image` varchar(100) NOT NULL DEFAULT 'default.jpg',
+  `image_blob` longblob,
+  `image_type` varchar(100) DEFAULT NULL,
+  `status` tinyint NOT NULL DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `force_password_change` tinyint(1) DEFAULT 1,
   `last_login_at` datetime DEFAULT NULL,
-  `failed_login_attempts` int NOT NULL DEFAULT '0',
+  `failed_login_attempts` int NOT NULL DEFAULT 0,
   `locked_until` datetime DEFAULT NULL,
-  `reset_token_hash` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `reset_token_hash` varchar(64) DEFAULT NULL,
   `reset_token_expires` datetime DEFAULT NULL,
-  `reset_request_count` int NOT NULL DEFAULT '0',
+  `reset_request_count` int NOT NULL DEFAULT 0,
   `reset_request_window_start` datetime DEFAULT NULL,
-  `reset_last_requested_at` datetime DEFAULT NULL
+  `reset_last_requested_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`idadmin`),
+  UNIQUE KEY `uq_admin_email` (`email`),
+  UNIQUE KEY `uq_admin_username` (`username`),
+  UNIQUE KEY `uq_admin_friend_code` (`friend_code`),
+  KEY `idx_admin_role` (`role`),
+  CONSTRAINT `fk_admin_role`
+    FOREIGN KEY (`role`) REFERENCES `role` (`idrole`)
+    ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `admin`
---
--- --------------------------------------------------------
-
---
--- Table structure for table `admin_contacts`
---
-
-CREATE TABLE `admin_contacts` (
-  `id` int NOT NULL,
-  `owner_admin_id` int NOT NULL,
-  `friend_admin_id` int NOT NULL,
-  `display_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+-- ----------------------------
+-- FEEDBACK (legacy chat table)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `feedback` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `sender` varchar(100) NOT NULL,
+  `receiver` varchar(100) NOT NULL,
+  `channel` varchar(30) NOT NULL DEFAULT 'user_admin',
+  `title` varchar(150) NOT NULL,
+  `feedbackdata` text NOT NULL,
+  `attachment` varchar(150) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `read_at` timestamp NULL DEFAULT NULL,
+  `delivered_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_feedback_receiver_created` (`receiver`,`created_at`),
+  KEY `idx_feedback_receiver_read` (`receiver`,`is_read`,`created_at`),
+  KEY `idx_feedback_sender_receiver` (`sender`,`receiver`,`created_at`),
+  KEY `idx_feedback_channel_receiver` (`channel`,`receiver`,`created_at`),
+  KEY `idx_feedback_channel_read` (`channel`,`receiver`,`is_read`,`created_at`),
+  KEY `idx_delivered_at` (`delivered_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `admin_contacts`
---
--- --------------------------------------------------------
+-- ----------------------------
+-- CHAT (id-based chat tables)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `chat_messages` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `sender_id` int NOT NULL,
+  `receiver_id` int NOT NULL,
+  `feedbackdata` text NOT NULL,
+  `attachment` varchar(255) DEFAULT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_pair_time` (`sender_id`,`receiver_id`,`created_at`),
+  KEY `idx_receiver_read` (`receiver_id`,`is_read`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Table structure for table `admin_security_log`
---
+CREATE TABLE IF NOT EXISTS `chat_typing` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `sender_code` varchar(20) DEFAULT NULL,
+  `receiver_code` varchar(20) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_typing` (`sender_code`,`receiver_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `admin_security_log` (
-  `id` int NOT NULL,
-  `email` varchar(190) DEFAULT NULL,
-  `admin_id` int DEFAULT NULL,
-  `action` varchar(50) NOT NULL,
-  `success` tinyint(1) NOT NULL DEFAULT '0',
-  `ip` varchar(64) DEFAULT NULL,
-  `user_agent` varchar(255) DEFAULT NULL,
-  `meta` text,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
---
--- Dumping data for table `admin_security_log`
---
--- --------------------------------------------------------
-
---
--- Table structure for table `contacts`
---
-
-CREATE TABLE `contacts` (
-  `id` int NOT NULL,
+-- ----------------------------
+-- CONTACTS + REQUESTS
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `contacts` (
+  `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
   `contact_user_id` int NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_contacts_pair` (`user_id`,`contact_user_id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_contact` (`contact_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
-
---
--- Table structure for table `contact_requests`
---
-
-CREATE TABLE `contact_requests` (
-  `id` int NOT NULL,
+CREATE TABLE IF NOT EXISTS `contact_requests` (
+  `id` int NOT NULL AUTO_INCREMENT,
   `from_user_id` int NOT NULL,
   `to_user_id` int NOT NULL,
   `status` enum('pending','accepted','declined','blocked') NOT NULL DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_request_pair` (`from_user_id`,`to_user_id`),
+  KEY `idx_to_status` (`to_user_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-- Existing alias/contact list table (your dump)
+CREATE TABLE IF NOT EXISTS `user_contacts` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `owner_user_id` int NOT NULL,
+  `friend_user_id` varchar(100) NOT NULL,
+  `display_name` varchar(100) NOT NULL,
+  `contact_user_id` int DEFAULT NULL,
+  `contact_email` varchar(255) DEFAULT NULL,
+  `contact_name` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_owner_contact_user` (`owner_user_id`,`contact_user_id`),
+  UNIQUE KEY `uq_owner_contact_email` (`owner_user_id`,`contact_email`),
+  KEY `idx_owner` (`owner_user_id`),
+  KEY `idx_contact_user` (`contact_user_id`),
+  KEY `idx_contact_email` (`contact_email`),
+  KEY `idx_friend_user_id` (`friend_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Table structure for table `conversations`
---
-
-CREATE TABLE `conversations` (
-  `id` int NOT NULL,
+-- ----------------------------
+-- CONVERSATIONS (alternative chat model)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `conversations` (
+  `id` int NOT NULL AUTO_INCREMENT,
   `uuid` char(36) NOT NULL,
   `type` enum('user','support') NOT NULL DEFAULT 'user',
   `created_by_user_id` int DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_conv_uuid` (`uuid`),
+  KEY `idx_type` (`type`),
+  KEY `idx_creator` (`created_by_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `conversations`
---
--- --------------------------------------------------------
-
---
--- Table structure for table `conversation_participants`
---
-
-CREATE TABLE `conversation_participants` (
+CREATE TABLE IF NOT EXISTS `conversation_participants` (
   `conversation_id` int NOT NULL,
   `user_id` int NOT NULL,
-  `joined_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
---
--- Dumping data for table `conversation_participants`
---
--- --------------------------------------------------------
-
---
--- Table structure for table `deleteduser`
---
-
-CREATE TABLE `deleteduser` (
-  `id` int NOT NULL,
-  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `deleted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `joined_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`conversation_id`,`user_id`),
+  KEY `idx_cp_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
-
---
--- Table structure for table `feedback`
---
-
-CREATE TABLE `feedback` (
-  `id` int NOT NULL,
-  `sender` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `receiver` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `channel` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'user_admin',
-  `title` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `feedbackdata` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `attachment` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `is_read` tinyint(1) NOT NULL DEFAULT '0',
-  `read_at` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `feedback`
---
--- --------------------------------------------------------
-
---
--- Table structure for table `messages`
---
-
-CREATE TABLE `messages` (
-  `id` int NOT NULL,
+CREATE TABLE IF NOT EXISTS `messages` (
+  `id` int NOT NULL AUTO_INCREMENT,
   `conversation_id` int NOT NULL,
   `sender_user_id` int NOT NULL,
   `body` text,
   `attachment` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
---
--- Dumping data for table `messages`
---
-
-INSERT INTO `messages` (`id`, `conversation_id`, `sender_user_id`, `body`, `attachment`, `created_at`) VALUES
-(2, 7, 11, 'Hello', NULL, '2026-01-07 02:31:48');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `message_reads`
---
-
-CREATE TABLE `message_reads` (
-  `message_id` int NOT NULL,
-  `user_id` int NOT NULL,
-  `read_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
---
--- Dumping data for table `message_reads`
---
-
-INSERT INTO `message_reads` (`message_id`, `user_id`, `read_at`) VALUES
-(2, 11, '2026-01-07 02:31:50');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `notification`
---
-
-CREATE TABLE `notification` (
-  `id` int NOT NULL,
-  `notiuser` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `notireceiver` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `notitype` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `is_read` tinyint(1) NOT NULL DEFAULT '0',
-  `read_at` timestamp NULL DEFAULT NULL
+  PRIMARY KEY (`id`),
+  KEY `idx_conv_time` (`conversation_id`,`created_at`),
+  KEY `idx_sender` (`sender_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `notification`
---
--- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `message_reads` (
+  `message_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `read_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`message_id`,`user_id`),
+  KEY `idx_mr_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Table structure for table `password_reset_tokens`
---
+-- ----------------------------
+-- NOTIFICATIONS
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `notification` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `notiuser` varchar(100) NOT NULL,
+  `notireceiver` varchar(100) NOT NULL,
+  `notitype` varchar(100) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `read_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_notification_receiver_read` (`notireceiver`,`is_read`),
+  KEY `idx_notification_receiver_created` (`notireceiver`,`created_at`),
+  KEY `idx_notification_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `password_reset_tokens` (
-  `id` int NOT NULL,
+-- ----------------------------
+-- PASSWORD RESET TOKENS
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
+  `id` int NOT NULL AUTO_INCREMENT,
   `account_type` enum('user','admin') NOT NULL,
   `user_id` int DEFAULT NULL,
   `admin_id` int DEFAULT NULL,
@@ -266,454 +268,184 @@ CREATE TABLE `password_reset_tokens` (
   `used_at` datetime DEFAULT NULL,
   `ip` varchar(64) DEFAULT NULL,
   `user_agent` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- --------------------------------------------------------
-
---
--- Table structure for table `role`
---
-
-CREATE TABLE `role` (
-  `idrole` int NOT NULL,
-  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_token_hash` (`token_hash`),
+  KEY `idx_username` (`username`),
+  KEY `idx_expires` (`expires_at`),
+  KEY `idx_account` (`account_type`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_admin_id` (`admin_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `role`
---
+-- ----------------------------
+-- SECURITY LOGS (kept)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `security_log` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(100) DEFAULT NULL,
+  `admin_id` int DEFAULT NULL,
+  `action` varchar(50) NOT NULL,
+  `success` tinyint(1) NOT NULL DEFAULT 0,
+  `ip` varchar(45) NOT NULL,
+  `user_agent` varchar(255) NOT NULL,
+  `meta` text,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_email` (`email`),
+  KEY `idx_admin` (`admin_id`),
+  KEY `idx_action` (`action`),
+  KEY `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `role` (`idrole`, `name`) VALUES
-(1, 'Admin'),
-(3, 'Gospel'),
-(2, 'Manager'),
-(4, 'Staff');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `security_audit_log`
---
-
-CREATE TABLE `security_audit_log` (
-  `id` int NOT NULL,
+CREATE TABLE IF NOT EXISTS `security_audit_log` (
+  `id` int NOT NULL AUTO_INCREMENT,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `email` varchar(190) DEFAULT NULL,
   `username` varchar(100) DEFAULT NULL,
   `admin_id` int DEFAULT NULL,
   `action` varchar(50) NOT NULL,
-  `success` tinyint(1) NOT NULL DEFAULT '0',
+  `success` tinyint(1) NOT NULL DEFAULT 0,
   `ip` varchar(64) DEFAULT NULL,
   `user_agent` varchar(255) DEFAULT NULL,
-  `meta` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  `meta` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_action` (`action`),
+  KEY `idx_success` (`success`),
+  KEY `idx_email` (`email`),
+  KEY `idx_username` (`username`),
+  KEY `idx_admin_id` (`admin_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `security_audit_log`
---
-- --------------------------------------------------------
-
---
--- Table structure for table `security_log`
---
-
-CREATE TABLE `security_log` (
-  `id` int NOT NULL,
-  `email` varchar(100) DEFAULT NULL,
+CREATE TABLE IF NOT EXISTS `admin_security_log` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(190) DEFAULT NULL,
   `admin_id` int DEFAULT NULL,
   `action` varchar(50) NOT NULL,
-  `success` tinyint(1) NOT NULL DEFAULT '0',
-  `ip` varchar(45) NOT NULL,
-  `user_agent` varchar(255) NOT NULL,
+  `success` tinyint(1) NOT NULL DEFAULT 0,
+  `ip` varchar(64) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
   `meta` text,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- --------------------------------------------------------
-
---
--- Table structure for table `users`
---
-
-CREATE TABLE `users` (
-  `id` int NOT NULL,
-  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `friend_code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `gender` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `mobile` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `designation` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `role` int NOT NULL DEFAULT '4',
-  `image` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'default.jpg',
-  `image_blob` longblob,
-  `image_type` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `status` tinyint NOT NULL DEFAULT '1',
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_asl_email` (`email`),
+  KEY `idx_asl_admin_id` (`admin_id`),
+  KEY `idx_asl_action` (`action`),
+  KEY `idx_asl_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `users`
---
--- --------------------------------------------------------
-
---
--- Table structure for table `user_contacts`
---
-
-CREATE TABLE `user_contacts` (
-  `id` int NOT NULL,
-  `owner_user_id` int NOT NULL,
-  `friend_user_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `display_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `contact_user_id` int DEFAULT NULL,
-  `contact_email` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `contact_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+-- ----------------------------
+-- OTHER TABLES FROM YOUR DUMP
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `admin_contacts` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `owner_admin_id` int NOT NULL,
+  `friend_admin_id` int NOT NULL,
+  `display_name` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_owner_friend` (`owner_admin_id`,`friend_admin_id`),
+  KEY `idx_owner_admin` (`owner_admin_id`),
+  KEY `idx_friend_admin` (`friend_admin_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `user_contacts`
---
---
--- Indexes for dumped tables
---
+CREATE TABLE IF NOT EXISTS `deleteduser` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(100) NOT NULL,
+  `deleted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_deleteduser_email` (`email`),
+  KEY `idx_deleteduser_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Indexes for table `admin`
---
-ALTER TABLE `admin`
-  ADD PRIMARY KEY (`idadmin`),
-  ADD UNIQUE KEY `uq_admin_email` (`email`),
-  ADD UNIQUE KEY `uq_admin_username` (`username`),
-  ADD UNIQUE KEY `username` (`username`),
-  ADD UNIQUE KEY `uq_admin_friend_code` (`friend_code`),
-  ADD UNIQUE KEY `ux_admin_friend_code` (`friend_code`),
-  ADD UNIQUE KEY `uniq_admin_friend_code` (`friend_code`),
-  ADD UNIQUE KEY `uniq_friend_code` (`friend_code`),
-  ADD KEY `idx_admin_role` (`role`);
+CREATE TABLE IF NOT EXISTS `roles` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(50) NOT NULL,
+  `inherits_from` int DEFAULT NULL,
+  `status` tinyint NOT NULL DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_roles_name` (`name`),
+  KEY `idx_roles_inherits` (`inherits_from`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Indexes for table `admin_contacts`
---
-ALTER TABLE `admin_contacts`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_owner_friend` (`owner_admin_id`,`friend_admin_id`),
-  ADD KEY `idx_owner` (`owner_admin_id`),
-  ADD KEY `idx_friend` (`friend_admin_id`);
+CREATE TABLE IF NOT EXISTS `role_chat_matrix` (
+  `from_role` int NOT NULL,
+  `to_role` int NOT NULL,
+  `allowed` tinyint NOT NULL DEFAULT 1,
+  PRIMARY KEY (`from_role`,`to_role`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Indexes for table `admin_security_log`
---
-ALTER TABLE `admin_security_log`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `email` (`email`),
-  ADD KEY `admin_id` (`admin_id`),
-  ADD KEY `action` (`action`),
-  ADD KEY `created_at` (`created_at`);
+CREATE TABLE IF NOT EXISTS `role_permissions` (
+  `role_id` int NOT NULL,
+  `perm` varchar(50) NOT NULL,
+  PRIMARY KEY (`role_id`,`perm`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Indexes for table `contacts`
---
+-- ----------------------------
+-- DATA SEEDS (your known roles)
+-- ----------------------------
+INSERT INTO `role` (`idrole`,`name`,`inherits_from`,`status`) VALUES
+(1,'Admin',NULL,1),
+(2,'Manager',NULL,1),
+(3,'Gospel',NULL,1),
+(4,'Staff',NULL,1),
+(5,'Coach',2,1),
+(6,'Teacher',NULL,1),
+(7,'Technician',2,1)
+ON DUPLICATE KEY UPDATE
+  `name`=VALUES(`name`),
+  `inherits_from`=VALUES(`inherits_from`),
+  `status`=VALUES(`status`);
+
+-- ----------------------------
+-- FIX for FK error #1452 (IMPORTANT)
+-- If chat_messages already has rows with sender_id/receiver_id NOT IN users.id,
+-- foreign keys will fail. You must fix (delete/repair) orphan rows first.
+-- ----------------------------
+
+-- Option A (recommended): delete orphan rows
+DELETE cm
+FROM chat_messages cm
+LEFT JOIN users u ON u.id = cm.sender_id
+WHERE u.id IS NULL;
+
+DELETE cm
+FROM chat_messages cm
+LEFT JOIN users u ON u.id = cm.receiver_id
+WHERE u.id IS NULL;
+
+-- ----------------------------
+-- FOREIGN KEYS (add after cleanup)
+-- ----------------------------
 ALTER TABLE `contacts`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_contacts_pair` (`user_id`,`contact_user_id`),
-  ADD KEY `idx_user` (`user_id`),
-  ADD KEY `fk_c_contact` (`contact_user_id`);
+  ADD CONSTRAINT `fk_c_user`    FOREIGN KEY (`user_id`)         REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_c_contact` FOREIGN KEY (`contact_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Indexes for table `contact_requests`
---
-ALTER TABLE `contact_requests`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_request_pair` (`from_user_id`,`to_user_id`),
-  ADD KEY `idx_to_status` (`to_user_id`,`status`);
-
---
--- Indexes for table `conversations`
---
-ALTER TABLE `conversations`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_conv_uuid` (`uuid`),
-  ADD KEY `idx_type` (`type`),
-  ADD KEY `fk_conv_creator` (`created_by_user_id`);
-
---
--- Indexes for table `conversation_participants`
---
-ALTER TABLE `conversation_participants`
-  ADD PRIMARY KEY (`conversation_id`,`user_id`),
-  ADD KEY `idx_user` (`user_id`);
-
---
--- Indexes for table `deleteduser`
---
-ALTER TABLE `deleteduser`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_deleteduser_email` (`email`),
-  ADD KEY `idx_deleteduser_deleted_at` (`deleted_at`);
-
---
--- Indexes for table `feedback`
---
-ALTER TABLE `feedback`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_feedback_receiver_created` (`receiver`,`created_at`),
-  ADD KEY `idx_feedback_receiver_read` (`receiver`,`is_read`,`created_at`),
-  ADD KEY `idx_feedback_sender_receiver` (`sender`,`receiver`,`created_at`),
-  ADD KEY `idx_feedback_channel_receiver` (`channel`,`receiver`,`created_at`),
-  ADD KEY `idx_feedback_channel_read` (`channel`,`receiver`,`is_read`,`created_at`),
-  ADD KEY `idx_feedback_channel_sender_receiver` (`channel`,`sender`,`receiver`,`created_at`),
-  ADD KEY `idx_feedback_channel_receiver_read` (`channel`,`receiver`,`is_read`,`created_at`);
-
---
--- Indexes for table `messages`
---
-ALTER TABLE `messages`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `fk_msg_sender` (`sender_user_id`),
-  ADD KEY `idx_conv_time` (`conversation_id`,`created_at`);
-
---
--- Indexes for table `message_reads`
---
-ALTER TABLE `message_reads`
-  ADD PRIMARY KEY (`message_id`,`user_id`),
-  ADD KEY `fk_mr_user` (`user_id`);
-
---
--- Indexes for table `notification`
---
-ALTER TABLE `notification`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_notification_receiver_read` (`notireceiver`,`is_read`),
-  ADD KEY `idx_notification_receiver_created` (`notireceiver`,`created_at`),
-  ADD KEY `idx_notification_created` (`created_at`);
-
---
--- Indexes for table `password_reset_tokens`
---
-ALTER TABLE `password_reset_tokens`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_token_hash` (`token_hash`),
-  ADD KEY `idx_username` (`username`),
-  ADD KEY `idx_expires` (`expires_at`),
-  ADD KEY `idx_account` (`account_type`),
-  ADD KEY `idx_user_id` (`user_id`),
-  ADD KEY `idx_admin_id` (`admin_id`);
-
---
--- Indexes for table `role`
---
-ALTER TABLE `role`
-  ADD PRIMARY KEY (`idrole`),
-  ADD UNIQUE KEY `name` (`name`);
-
---
--- Indexes for table `security_audit_log`
---
-ALTER TABLE `security_audit_log`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_created_at` (`created_at`),
-  ADD KEY `idx_action` (`action`),
-  ADD KEY `idx_success` (`success`),
-  ADD KEY `idx_email` (`email`),
-  ADD KEY `idx_username` (`username`),
-  ADD KEY `idx_admin_id` (`admin_id`);
-
---
--- Indexes for table `security_log`
---
-ALTER TABLE `security_log`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_email` (`email`),
-  ADD KEY `idx_admin` (`admin_id`),
-  ADD KEY `idx_action` (`action`),
-  ADD KEY `idx_created` (`created_at`);
-
---
--- Indexes for table `users`
---
-ALTER TABLE `users`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_users_email` (`email`),
-  ADD UNIQUE KEY `uq_users_friend_code` (`friend_code`),
-  ADD UNIQUE KEY `idx_users_friend_code` (`friend_code`),
-  ADD UNIQUE KEY `uq_users_username` (`username`),
-  ADD UNIQUE KEY `username` (`username`),
-  ADD KEY `idx_users_role` (`role`);
-
---
--- Indexes for table `user_contacts`
---
-ALTER TABLE `user_contacts`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uq_owner_contact_user` (`owner_user_id`,`contact_user_id`),
-  ADD UNIQUE KEY `uq_owner_contact_email` (`owner_user_id`,`contact_email`),
-  ADD KEY `idx_owner` (`owner_user_id`),
-  ADD KEY `idx_contact_user` (`contact_user_id`),
-  ADD KEY `idx_contact_email` (`contact_email`);
-
---
--- AUTO_INCREMENT for dumped tables
---
-
---
--- AUTO_INCREMENT for table `admin`
---
-ALTER TABLE `admin`
-  MODIFY `idadmin` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
-
---
--- AUTO_INCREMENT for table `admin_contacts`
---
-ALTER TABLE `admin_contacts`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
-
---
--- AUTO_INCREMENT for table `admin_security_log`
---
-ALTER TABLE `admin_security_log`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
--- AUTO_INCREMENT for table `contacts`
---
-ALTER TABLE `contacts`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `contact_requests`
---
-ALTER TABLE `contact_requests`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `conversations`
---
-ALTER TABLE `conversations`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
-
---
--- AUTO_INCREMENT for table `deleteduser`
---
-ALTER TABLE `deleteduser`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `feedback`
---
-ALTER TABLE `feedback`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=98;
-
---
--- AUTO_INCREMENT for table `messages`
---
-ALTER TABLE `messages`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
--- AUTO_INCREMENT for table `notification`
---
-ALTER TABLE `notification`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=109;
-
---
--- AUTO_INCREMENT for table `password_reset_tokens`
---
-ALTER TABLE `password_reset_tokens`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `role`
---
-ALTER TABLE `role`
-  MODIFY `idrole` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
-
---
--- AUTO_INCREMENT for table `security_audit_log`
---
-ALTER TABLE `security_audit_log`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
-
---
--- AUTO_INCREMENT for table `security_log`
---
-ALTER TABLE `security_log`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `users`
---
-ALTER TABLE `users`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
-
---
--- AUTO_INCREMENT for table `user_contacts`
---
-ALTER TABLE `user_contacts`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
-
---
--- Constraints for dumped tables
---
-
---
--- Constraints for table `admin`
---
-ALTER TABLE `admin`
-  ADD CONSTRAINT `fk_admin_role` FOREIGN KEY (`role`) REFERENCES `role` (`idrole`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
---
--- Constraints for table `contacts`
---
-ALTER TABLE `contacts`
-  ADD CONSTRAINT `fk_c_contact` FOREIGN KEY (`contact_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_c_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
--- Constraints for table `contact_requests`
---
 ALTER TABLE `contact_requests`
   ADD CONSTRAINT `fk_cr_from` FOREIGN KEY (`from_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_cr_to` FOREIGN KEY (`to_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `fk_cr_to`   FOREIGN KEY (`to_user_id`)   REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `conversations`
---
 ALTER TABLE `conversations`
   ADD CONSTRAINT `fk_conv_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
 
---
--- Constraints for table `conversation_participants`
---
 ALTER TABLE `conversation_participants`
   ADD CONSTRAINT `fk_cp_conv` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_cp_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `fk_cp_user` FOREIGN KEY (`user_id`)         REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `messages`
---
 ALTER TABLE `messages`
-  ADD CONSTRAINT `fk_msg_conv` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_msg_sender` FOREIGN KEY (`sender_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `fk_msg_conv`   FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_msg_sender` FOREIGN KEY (`sender_user_id`)  REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `message_reads`
---
 ALTER TABLE `message_reads`
-  ADD CONSTRAINT `fk_mr_msg` FOREIGN KEY (`message_id`) REFERENCES `messages` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_mr_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `fk_mr_msg`  FOREIGN KEY (`message_id`) REFERENCES `messages` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_mr_user` FOREIGN KEY (`user_id`)    REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `users`
---
-ALTER TABLE `users`
-  ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role`) REFERENCES `role` (`idrole`) ON DELETE RESTRICT ON UPDATE CASCADE;
-COMMIT;
+ALTER TABLE `chat_messages`
+  ADD CONSTRAINT `fk_sender`   FOREIGN KEY (`sender_id`)   REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_receiver` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+-- OPTIONAL: one alias per friend_code per owner (store friend_code in friend_user_id)
+-- ALTER TABLE user_contacts
+--   ADD UNIQUE KEY uq_owner_friend_code (owner_user_id, friend_user_id);

@@ -4,167 +4,139 @@ declare(strict_types=1);
 
 error_reporting(0);
 
+require_once __DIR__ . '/../includes/session_user.php';
+requireUserLogin();
+
 require_once __DIR__ . '/../admin/controller.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
 
 header('Content-Type: application/json; charset=utf-8');
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 
-function myFriendCode(): string {
-    if (function_exists('userFriendCode')) return trim((string)userFriendCode());
-    return trim((string)($_SESSION['user_friend_code'] ?? $_SESSION['friend_code'] ?? ''));
-}
-
-function fmt_time_short(string $dt): string {
-    if ($dt === '') return '';
-    $ts = strtotime($dt);
-    if (!$ts) return '';
-    return date('h:i A', $ts);
-}
-
-$meCode = myFriendCode();
-if ($meCode === '') {
-    echo json_encode(['ok'=>false,'error'=>'Not logged in']);
-    exit;
-}
+function j(array $arr): void { echo json_encode($arr); exit; }
 
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-$mode  = trim((string)($_GET['mode'] ?? ''));
+$meCode  = strtoupper(trim((string)userFriendCode()));
+$meEmail = trim((string)userEmail());
+$meName  = trim((string)myUserName());
+
+if ($meCode === '' && $meEmail === '') j(['ok'=>false,'error'=>'Not logged in']);
+
+$peerCode = strtoupper(trim((string)($_GET['peer'] ?? '')));
+if ($peerCode === '') $peerCode = strtoupper(trim((string)($_GET['reply'] ?? ''))); // legacy
 $after = (int)($_GET['after'] ?? 0);
+$wait  = (int)($_GET['wait'] ?? 0); // seconds (long-poll)
 
-/**
- * MODE 1: dropdown unread threads (friend_code based)
- * GET: ?mode=unread_threads
- * Returns ONLY peers who have unread messages to me.
- */
-if ($mode === 'unread_threads') {
-    try {
-        // unread grouped by sender (peer_code), last message via max(id)
-        $sql = "
-            SELECT
-                uu.peer_code,
-                COALESCE(NULLIF(u.name,''), NULLIF(u.username,''), u.friend_code, uu.peer_code) AS peer_display,
-                f.feedbackdata AS last_message,
-                f.created_at   AS last_time,
-                uu.unread_count
-            FROM (
-                SELECT sender AS peer_code, COUNT(*) AS unread_count, MAX(id) AS last_id
-                FROM feedback
-                WHERE channel='user_user'
-                  AND receiver = ?
-                  AND is_read = 0
-                GROUP BY sender
-            ) uu
-            JOIN feedback f ON f.id = uu.last_id
-            LEFT JOIN users u ON UPPER(u.friend_code) = UPPER(uu.peer_code)
-            ORDER BY f.created_at DESC, f.id DESC
-            LIMIT 30
-        ";
-        $st = $dbh->prepare($sql);
-        $st->execute([$meCode]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+if ($peerCode === '') j(['ok'=>false,'error'=>'Missing peer']);
 
-        $items = [];
-        $total = 0;
-
-        foreach ($rows as $r) {
-            $peerCode = (string)($r['peer_code'] ?? '');
-            if ($peerCode === '') continue;
-
-            $unread = (int)($r['unread_count'] ?? 0);
-            $total += $unread;
-
-            $items[] = [
-                'peer_code'    => $peerCode,
-                'peer_display' => (string)($r['peer_display'] ?? $peerCode),
-                'last_message' => (string)($r['last_message'] ?? ''),
-                'last_time'    => fmt_time_short((string)($r['last_time'] ?? '')),
-                'unread_count' => $unread,
-            ];
-        }
-
-        echo json_encode([
-            'ok' => true,
-            'items' => $items,
-            'total_unread' => $total
-        ]);
-        exit;
-
-    } catch (Throwable $e) {
-        echo json_encode(['ok'=>false,'error'=>'Server error']);
-        exit;
-    }
+if (!preg_match('/^[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $peerCode)) {
+    j(['ok'=>false,'error'=>'Friend code required']);
 }
-
-/**
- * MODE 2 (optional legacy): load messages in a thread + mark read
- * GET: ?reply=<FRIEND_CODE>&after=<ID>
- * NOTE: This supports friend_code style storage in feedback.
- */
-$reply = trim((string)($_GET['reply'] ?? ''));
-if ($reply === '') {
-    echo json_encode(['ok'=>false,'error'=>'Missing reply']);
-    exit;
-}
-
-if (!preg_match('/^[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $reply)) {
-    echo json_encode(['ok'=>false,'error'=>'Invalid friend code']);
-    exit;
-}
-
-$peerCode = strtoupper($reply);
 
 try {
-    // load new messages after `after`
-    $q = $dbh->prepare("
-        SELECT id, sender, receiver, feedbackdata, created_at
-        FROM feedback
-        WHERE channel='user_user'
-          AND id > :after
-          AND (
-                (sender=:me AND receiver=:peer)
-             OR (sender=:peer2 AND receiver=:me2)
-          )
-        ORDER BY id ASC
-        LIMIT 100
+    // Resolve peer
+    $st = $dbh->prepare("
+        SELECT id, email, friend_code,
+               COALESCE(NULLIF(name,''), NULLIF(username,''), friend_code) AS display
+        FROM users
+        WHERE UPPER(friend_code) = :c
+          AND status = 1
+        LIMIT 1
     ");
-    $q->execute([
-        ':after' => $after,
-        ':me'    => $meCode,
-        ':peer'  => $peerCode,
-        ':peer2' => $peerCode,
-        ':me2'   => $meCode,
-    ]);
-    $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $st->execute([':c' => $peerCode]);
+    $peer = $st->fetch(PDO::FETCH_ASSOC);
 
-    // Mark peer->me as read
+    if (!$peer) j(['ok'=>false,'error'=>'Friend not found']);
+
+    $peerEmail   = (string)$peer['email'];
+    $peerDisplay = (string)$peer['display'];
+
+    // Long-poll loop
+    $deadline = time() + max(0, min($wait, 25)); // cap to 25s
+    $rows = [];
+
+    while (true) {
+        // Pull new rows since last id
+        $q = $dbh->prepare("
+            SELECT id, sender, receiver, feedbackdata, created_at, is_read
+            FROM feedback
+            WHERE channel='user_user'
+              AND id > :after
+              AND (
+                    (sender IN (:meCode, :meEmail) AND receiver IN (:peerCode, :peerEmail))
+                 OR (sender IN (:peerCode2, :peerEmail2) AND receiver IN (:meCode2, :meEmail2))
+              )
+            ORDER BY id ASC
+            LIMIT 200
+        ");
+        $q->execute([
+            ':after'      => $after,
+            ':meCode'     => $meCode,
+            ':meEmail'    => $meEmail,
+            ':peerCode'   => $peerCode,
+            ':peerEmail'  => $peerEmail,
+            ':peerCode2'  => $peerCode,
+            ':peerEmail2' => $peerEmail,
+            ':meCode2'    => $meCode,
+            ':meEmail2'   => $meEmail,
+        ]);
+        $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (!empty($rows) || $wait <= 0 || time() >= $deadline) {
+            break;
+        }
+
+        // Sleep briefly then try again (keeps connection open)
+        usleep(300000); // 300ms
+        clearstatcache();
+    }
+
+    // Mark peer->me as read (only if there were messages OR always on poll)
     $mk = $dbh->prepare("
         UPDATE feedback
         SET is_read=1, read_at=NOW()
         WHERE channel='user_user'
-          AND receiver=:me
-          AND sender=:peer
+          AND receiver IN (:meCode, :meEmail)
+          AND sender   IN (:peerCode, :peerEmail)
           AND is_read=0
     ");
-    $mk->execute([':me'=>$meCode, ':peer'=>$peerCode]);
+    $mk->execute([
+        ':meCode'    => $meCode,
+        ':meEmail'   => $meEmail,
+        ':peerCode'  => $peerCode,
+        ':peerEmail' => $peerEmail,
+    ]);
 
     $items = [];
+    $lastId = $after;
+
     foreach ($rows as $r) {
+        $id = (int)$r['id'];
+        if ($id > $lastId) $lastId = $id;
+
+        $sender = (string)$r['sender'];
+        $isMe = (strcasecmp($sender, $meCode) === 0) || ($meEmail !== '' && strcasecmp($sender, $meEmail) === 0);
+
+        $created = (string)($r['created_at'] ?? '');
+        $ts = $created ? (strtotime($created) ?: 0) : 0;
+
         $items[] = [
-            'id' => (int)$r['id'],
-            'is_me' => (strcasecmp((string)$r['sender'], $meCode) === 0),
-            'feedbackdata' => (string)($r['feedbackdata'] ?? ''),
-            'time' => $r['created_at'] ? date('M d, Y h:i A', strtotime((string)$r['created_at'])) : '',
+            'id' => $id,
+            'is_me' => $isMe,
+            'sender_name' => $isMe ? (($meName !== '') ? $meName : 'You') : $peerDisplay,
+            'text' => (string)($r['feedbackdata'] ?? ''),
+            'created_at' => $created,
+            'time_label' => $ts ? date('M d, Y h:i A', $ts) : '',
+            'day_key'    => $ts ? date('Y-m-d', $ts) : '',
+            'day_label'  => $ts ? (date('Y-m-d', $ts) === date('Y-m-d') ? 'Today' : date('M j, Y', $ts)) : '',
+            // status: for my messages, show read tick if is_read=1
+            'is_read' => (int)($r['is_read'] ?? 0),
         ];
     }
 
-    echo json_encode(['ok'=>true,'items'=>$items]);
-    exit;
-
+    j(['ok'=>true,'items'=>$items,'last_id'=>$lastId,'peer_name'=>$peerDisplay]);
 } catch (Throwable $e) {
-    echo json_encode(['ok'=>false,'error'=>'Server error']);
-    exit;
+    j(['ok'=>false,'error'=>'Server error']);
 }

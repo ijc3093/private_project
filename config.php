@@ -13,7 +13,7 @@ class Config
     public string $DB_HOST = "localhost";
     public string $DB_USER = "root";
     public string $DB_PASS = "root";
-    public string $DB_NAME = "private_project";
+    public string $DB_NAME = "social_media";
 
     /* =========================
        SMTP (GMAIL - APP PASSWORD)

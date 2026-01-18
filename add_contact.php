@@ -119,11 +119,11 @@ if (isset($_POST['add_contact'])) {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         .box{background:#4b3d3d;border:1px solid #756060;border-radius:8px;padding:18px;box-shadow:0 4px 8px rgba(0,0,0,0.2);transition:.3s;margin-right:3%}
-        .hint{color:#777;font-size:13px}
+        .hint{color:#d5c2b0;;font-size:13px}
         .card{background-color:#3f3434}
         .bgtransparent{background-color:#3f3434}
         .page-title{margin-top:10%;margin-bottom:15px}
-        .btn-btn-primary,.btn{display:inline-block;margin-bottom:0;font-weight:normal;text-align:center;vertical-align:middle;cursor:pointer;border:1px solid transparent;white-space:nowrap;padding:12px 16px;font-size:14px;line-height:1.42857143;border-radius:4px;user-select:none;background:#806449;margin-top:15px}
+        .btn-btn-primary,.btn{display:inline-block;margin-bottom:0;font-weight:normal;text-align:center;vertical-align:middle;cursor:pointer;border:1px solid transparent;white-space:nowrap;padding:12px 16px;font-size:14px;line-height:1.42857143;border-radius:4px;user-select:none;background:#d5c2b0;;margin-top:15px}
     </style>
 </head>
 <body>
@@ -154,7 +154,7 @@ if (isset($_POST['add_contact'])) {
         <div class="box">
             <form method="post" autocomplete="off">
                 <div class="form-group">
-                    <label>Friend Code (recommended)</label>
+                    <label class="hint">Friend Code (recommended)</label>
                     <input type="text" name="friend"
                            class="w-full !pl-10 !font-normal bgtransparent h-12 !text-sm card"
                            placeholder="e.g. USR-XXXX-YYYY" required>
@@ -163,7 +163,7 @@ if (isset($_POST['add_contact'])) {
                         Use their <b>friend code</b> (or username/email if needed).
                     </div>
 
-                    <label style="margin-top:12px;display:block;">Display Name (optional nickname)</label>
+                    <label style="margin-top:12px;display:block; color:#d5c2b0;">Display Name (optional nickname)</label>
                     <!-- ✅ FIXED: must be display_name -->
                     <input type="text" name="display_name"
                            class="w-full !pl-10 !font-normal bgtransparent h-12 !text-sm card"

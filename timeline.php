@@ -40,7 +40,7 @@ function generateFriendCode(): string {
 // ------------------------------------
 $sessionEmail = $_SESSION['user_login'] ?? '';
 
-$sql = "SELECT id, name, username, email, mobile, designation, image_type, friend_code
+$sql = "SELECT id, name, username, email, friend_code, mobile, designation, image_type, friend_code
         FROM users
         WHERE email = :email
         LIMIT 1";
@@ -57,31 +57,68 @@ $result = $query->fetch(PDO::FETCH_OBJ);
 // ------------------------------------
 // ✅ Ensure Friend Code exists
 // ------------------------------------
-if (empty($result->friend_code)) {
-    try {
-        // Try a few times in case of UNIQUE collision
-        for ($try=0; $try<5; $try++) {
-            $code = generateFriendCode();
-
-            // Ensure not already taken
-            $chk = $dbh->prepare("SELECT id FROM users WHERE friend_code = :c LIMIT 1");
-            $chk->execute([':c' => $code]);
-            if ($chk->fetchColumn()) continue;
-
-            // Save it
-            $updCode = $dbh->prepare("UPDATE users SET friend_code = :c WHERE id = :id LIMIT 1");
-            $updCode->execute([
-                ':c'  => $code,
-                ':id' => (int)$result->id
-            ]);
-
-            $result->friend_code = $code;
-            break;
-        }
-    } catch (Throwable $e) {
-        // If this fails, profile still loads (just no code)
-    }
+// LOAD USER DATA (by session email)
+$sessionUser_friend_code = (string)($_SESSION['user_friend_code'] ?? '');
+if ($sessionUser_friend_code === '') {
+    // if your session uses different key, fix it here:
+    // e.g. $_SESSION['user_friend_code']
+    die("Invalid session.");
 }
+
+$sql = "SELECT id, name, username, email, mobile, designation, image_type, friend_code
+        FROM users
+        WHERE friend_code = :friend_code
+        LIMIT 1";
+$query = $dbh->prepare($sql);
+$query->execute([':friend_code' => $sessionUser_friend_code]);
+$result = $query->fetch(PDO::FETCH_OBJ);
+
+if (!$result) {
+    session_destroy();
+    header("Location: index.php?session=reset");
+    exit;
+}
+
+/** Generate UNIQUE friend code only if missing */
+function makeFriendCode(string $prefix = 'USR'): string {
+    $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $part = function() use ($chars) {
+        $s = '';
+        for ($i = 0; $i < 4; $i++) $s .= $chars[random_int(0, strlen($chars) - 1)];
+        return $s;
+    };
+    return strtoupper($prefix . '-' . $part() . '-' . $part());
+}
+
+function ensureFriendCode(PDO $dbh, int $userId): string {
+    // re-check from DB (source of truth)
+    $st = $dbh->prepare("SELECT friend_code FROM users WHERE id = :id LIMIT 1");
+    $st->execute([':id' => $userId]);
+    $code = trim((string)$st->fetchColumn());
+
+    if ($code !== '') return $code;
+
+    // generate once and save (unique index guarantees uniqueness)
+    for ($i=0; $i<60; $i++) {
+        $new = makeFriendCode('USR');
+        try {
+            $up = $dbh->prepare("UPDATE users SET friend_code = :c WHERE id = :id AND (friend_code IS NULL OR friend_code = '')");
+            $up->execute([':c' => $new, ':id' => $userId]);
+
+            // confirm
+            $st2 = $dbh->prepare("SELECT friend_code FROM users WHERE id = :id LIMIT 1");
+            $st2->execute([':id' => $userId]);
+            $final = trim((string)$st2->fetchColumn());
+            if ($final !== '') return $final;
+        } catch (Throwable $e) {
+            // if collision happened, loop again
+        }
+    }
+    return '';
+}
+
+$result->friend_code = ensureFriendCode($dbh, (int)$result->id);
+
 
 // ------------------------------------
 // UPDATE PROFILE

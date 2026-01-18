@@ -2,76 +2,67 @@
 // /Business_only3/ajax/user_chat_send.php
 declare(strict_types=1);
 
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
+require_once __DIR__ . '/../includes/session_user.php';
+requireUserLogin();
+
+require_once __DIR__ . '/../admin/controller.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 
-require_once __DIR__ . '/../includes/config.php';
-session_start();
+$meCode = function_exists('userFriendCode') ? userFriendCode() : trim((string)($_SESSION['user_friend_code'] ?? ''));
+$meCode = trim($meCode);
 
-function isEmail($s): bool { return (bool)filter_var($s, FILTER_VALIDATE_EMAIL); }
+$to = trim((string)($_POST['to'] ?? ''));
+$msg = trim((string)($_POST['message'] ?? ''));
 
-if (!isset($dbh) || !($dbh instanceof PDO)) {
-    echo json_encode(['ok'=>false,'error'=>'DB connection missing']);
+if ($meCode === '' || $to === '' || $msg === '') {
+    echo json_encode(['ok'=>false,'error'=>'Missing fields']);
     exit;
 }
 
-$me = trim((string)($_SESSION['login'] ?? $_SESSION['user_email'] ?? ''));
-if ($me === '' || !isEmail($me)) {
-    // IMPORTANT: return JSON, not HTML redirect
-    echo json_encode(['ok'=>false,'error'=>'Not logged in']);
-    exit;
-}
-
-$peer = trim((string)($_POST['peer'] ?? ''));
-$text = trim((string)($_POST['message'] ?? ''));
-
-if ($peer === '' || !isEmail($peer)) {
+// friend code validation
+if (!preg_match('/^[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $to)) {
     echo json_encode(['ok'=>false,'error'=>'Invalid peer']);
-    exit;
-}
-if (strcasecmp($peer, $me) === 0) {
-    echo json_encode(['ok'=>false,'error'=>'Cannot message yourself']);
-    exit;
-}
-if ($text === '') {
-    echo json_encode(['ok'=>false,'error'=>'Message cannot be empty']);
     exit;
 }
 
 try {
-    $channel = 'user_user';
+    $controller = new Controller();
+    $dbh = $controller->pdo();
 
+    // ensure peer exists
+    $st = $dbh->prepare("SELECT id, status FROM users WHERE UPPER(friend_code)=UPPER(:c) LIMIT 1");
+    $st->execute([':c'=>$to]);
+    $peer = $st->fetch(PDO::FETCH_ASSOC);
+
+    if (!$peer || (int)($peer['status'] ?? 1) !== 1) {
+        echo json_encode(['ok'=>false,'error'=>'Peer not found']);
+        exit;
+    }
+
+    // insert message (store friend_code -> friend_code)
     $ins = $dbh->prepare("
-        INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, is_read)
-        VALUES (:s, :r, :ch, 'Chat', :d, 0)
+        INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, attachment, is_read, created_at)
+        VALUES (:s, :r, 'user_user', '', :m, NULL, 0, NOW())
     ");
-    $ins->execute([
-        ':s'  => $me,
-        ':r'  => $peer,
-        ':ch' => $channel,
-        ':d'  => $text
-    ]);
+    $ins->execute([':s'=>$meCode, ':r'=>$to, ':m'=>$msg]);
 
     $id = (int)$dbh->lastInsertId();
 
     echo json_encode([
-        'ok' => true,
-        'message' => [
-            'id' => $id,
-            'sender' => $me,
-            'receiver' => $peer,
-            'channel' => $channel,
-            'feedbackdata' => $text,
-            'created_at' => date('Y-m-d H:i:s')
+        'ok'=>true,
+        'item'=>[
+            'id'=>$id,
+            'is_me'=>true,
+            'feedbackdata'=>$msg,
+            'time'=>date('M d, Y h:i A'),
         ]
     ]);
     exit;
 
 } catch (Throwable $e) {
-    echo json_encode(['ok'=>false,'error'=>'Database error: '.$e->getMessage()]);
+    echo json_encode(['ok'=>false,'error'=>'Server error']);
     exit;
 }

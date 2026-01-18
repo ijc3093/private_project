@@ -12,161 +12,84 @@ ini_set('display_errors', '1');
 $controller = new Controller();
 $dbh = $controller->pdo();
 
-/**
- * Small helpers
- */
 if (!function_exists('h')) {
     function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 }
-if (!function_exists('fmt_time_short')) {
-    function fmt_time_short(string $dt): string {
-        if ($dt === '') return '';
-        $ts = strtotime($dt);
-        if (!$ts) return '';
-        return date('h:i A', $ts);
-    }
-}
-if (!function_exists('fmt_day_label')) {
-    function fmt_day_label(string $dt): string {
-        if ($dt === '') return '';
-        $ts = strtotime($dt);
-        if (!$ts) return '';
-        $today = date('Y-m-d');
-        $day   = date('Y-m-d', $ts);
-        if ($day === $today) return 'Today';
-        if ($day === date('Y-m-d', strtotime('-1 day'))) return 'Yesterday';
-        return date('M j, Y', $ts);
-    }
+
+function fmt_time_short(string $dt): string {
+    if ($dt === '') return '';
+    $ts = strtotime($dt);
+    return $ts ? date('h:i A', $ts) : '';
 }
 
-/**
- * ✅ Session identity (username + email)
- * You said: everyone signs in with username and it must be unique.
- * session_user.php stores:
- *  - $_SESSION['user_login'] = username
- *  - $_SESSION['user_email'] = email
- */
-$sessionUsername = function_exists('userUsername') ? userUsername() : trim((string)($_SESSION['user_login'] ?? ''));
-$sessionEmail    = function_exists('userEmail') ? userEmail() : trim((string)($_SESSION['user_email'] ?? ''));
+function fmt_time_full(string $dt): string {
+    if ($dt === '') return '';
+    $ts = strtotime($dt);
+    return $ts ? date('M d, Y h:i A', $ts) : '';
+}
 
-$sessionUsername = trim($sessionUsername);
-$sessionEmail    = trim($sessionEmail);
+function day_key(string $dt): string {
+    $ts = strtotime($dt);
+    return $ts ? date('Y-m-d', $ts) : '';
+}
 
-if ($sessionUsername === '' && $sessionEmail === '') {
+function day_label(string $dt): string {
+    $ts = strtotime($dt);
+    if (!$ts) return '';
+    $today = date('Y-m-d');
+    $d = date('Y-m-d', $ts);
+    if ($d === $today) return 'Today';
+    if ($d === date('Y-m-d', strtotime('-1 day'))) return 'Yesterday';
+    return date('M j, Y', $ts);
+}
+
+/** session identity */
+$meCode  = strtoupper(trim((string)userFriendCode()));
+$meEmail = trim((string)userEmail());
+$meName  = trim((string)myUserName());
+
+if ($meCode === '' && $meEmail === '') {
     header("Location: index.php?session=reset");
     exit;
 }
 
-/**
- * Resolve logged-in user from DB by username (preferred) then email fallback
- */
-function getMe(PDO $dbh, string $username, string $email): array
-{
-    $me = false;
+$meDisplay = $meName !== '' ? $meName : 'You';
 
-    if ($username !== '') {
-        $st = $dbh->prepare("SELECT id, name, username, email, friend_code, status FROM users WHERE username = ? LIMIT 1");
-        $st->execute([$username]);
-        $me = $st->fetch(PDO::FETCH_ASSOC);
-    }
+/** Resolve peer */
+function resolvePeerByCode(PDO $dbh, string $peerCode): array {
+    $peerCode = strtoupper(trim($peerCode));
+    if ($peerCode === '') return ['ok'=>false];
 
-    if (!$me && $email !== '') {
-        $st = $dbh->prepare("SELECT id, name, username, email, friend_code, status FROM users WHERE email = ? LIMIT 1");
-        $st->execute([$email]);
-        $me = $st->fetch(PDO::FETCH_ASSOC);
-    }
-
-    if (!$me) return ['ok' => false, 'error' => 'not_found'];
-
-    if ((int)($me['status'] ?? 1) !== 1) return ['ok' => false, 'error' => 'inactive'];
-
-    $meId    = (int)($me['id'] ?? 0);
-    $meEmail = trim((string)($me['email'] ?? ''));
-    $meCode  = trim((string)($me['friend_code'] ?? ''));
-
-    if ($meId <= 0 || $meCode === '') return ['ok' => false, 'error' => 'missing_id_or_code'];
-
-    return [
-        'ok'        => true,
-        'me'        => $me,
-        'meId'      => $meId,
-        'meEmail'   => $meEmail,
-        'meCode'    => $meCode,
-        'meDisplay' => (string)($me['name'] ?? $me['username'] ?? $meCode),
-    ];
-}
-
-$meRes = getMe($dbh, $sessionUsername, $sessionEmail);
-if (!$meRes['ok']) {
-    // if your session points to a user that doesn't exist, treat as invalid session
-    header("Location: index.php?session=reset");
-    exit;
-}
-
-$meId    = (int)$meRes['meId'];
-$meEmail = (string)$meRes['meEmail'];
-$meCode  = (string)$meRes['meCode'];
-
-/**
- * Resolve peer by:
- * - friend_code (preferred)
- * - email
- * - username
- */
-function resolvePeer(PDO $dbh, string $peerRaw): array
-{
-    $peerRaw = trim($peerRaw);
-    if ($peerRaw === '') return ['ok' => false];
-
-    // email
-    if (strpos($peerRaw, '@') !== false) {
-        $st = $dbh->prepare("SELECT id, name, username, email, friend_code, status FROM users WHERE email = ? LIMIT 1");
-        $st->execute([$peerRaw]);
-    }
-    // friend_code (USR-xxxx-xxxx usually)
-    elseif (preg_match('/^[A-Z]{3}-/i', $peerRaw)) {
-        $st = $dbh->prepare("SELECT id, name, username, email, friend_code, status FROM users WHERE friend_code = ? LIMIT 1");
-        $st->execute([$peerRaw]);
-    }
-    // username
-    else {
-        $st = $dbh->prepare("SELECT id, name, username, email, friend_code, status FROM users WHERE username = ? LIMIT 1");
-        $st->execute([$peerRaw]);
-    }
-
+    $st = $dbh->prepare("
+        SELECT id, name, username, email, friend_code, status,
+               COALESCE(NULLIF(name,''), NULLIF(username,''), friend_code) AS display
+        FROM users
+        WHERE UPPER(friend_code)=:c
+        LIMIT 1
+    ");
+    $st->execute([':c'=>$peerCode]);
     $u = $st->fetch(PDO::FETCH_ASSOC);
-    if (!$u) return ['ok' => false];
 
-    if ((int)($u['status'] ?? 1) !== 1) return ['ok' => false]; // inactive
-
-    $display = trim((string)($u['name'] ?? ''));
-    if ($display === '') $display = trim((string)($u['username'] ?? ''));
-    if ($display === '') $display = trim((string)($u['friend_code'] ?? ''));
+    if (!$u) return ['ok'=>false];
+    if ((int)($u['status'] ?? 1) !== 1) return ['ok'=>false];
 
     return [
-        'ok'          => true,
-        'peer'        => $u,
-        'peerId'      => (int)($u['id'] ?? 0),
-        'peerEmail'   => (string)($u['email'] ?? ''),
-        'peerCode'    => (string)($u['friend_code'] ?? ''),
-        'peerDisplay' => $display,
+        'ok'=>true,
+        'peer'=>$u,
+        'peerEmail'=>(string)$u['email'],
+        'peerCode'=>(string)$u['friend_code'],
+        'peerDisplay'=>(string)$u['display'],
     ];
 }
 
-/**
- * ✅ THREAD LIST (NO DUPLICATES)
- * One user = one row, guaranteed by selecting FROM users and using EXISTS.
- * Works with old feedback rows (email) and new rows (friend_code).
- */
-function listThreads(PDO $dbh, int $meId, string $meCode, string $meEmail): array
-{
+/** Thread list */
+function listThreads(PDO $dbh, string $meCode, string $meEmail): array {
     $sql = "
         SELECT
             u.id AS peer_id,
             u.friend_code AS peer_key,
             COALESCE(NULLIF(u.name,''), NULLIF(u.username,''), u.friend_code) AS peer_display,
 
-            /* last message text */
             (
                 SELECT f2.feedbackdata
                 FROM feedback f2
@@ -179,7 +102,6 @@ function listThreads(PDO $dbh, int $meId, string $meCode, string $meEmail): arra
                 LIMIT 1
             ) AS last_message,
 
-            /* last time */
             (
                 SELECT f2.created_at
                 FROM feedback f2
@@ -192,7 +114,6 @@ function listThreads(PDO $dbh, int $meId, string $meCode, string $meEmail): arra
                 LIMIT 1
             ) AS last_time,
 
-            /* unread count from that peer to me */
             (
                 SELECT COUNT(*)
                 FROM feedback f3
@@ -204,7 +125,7 @@ function listThreads(PDO $dbh, int $meId, string $meCode, string $meEmail): arra
 
         FROM users u
         WHERE u.status = 1
-          AND u.id <> ?
+          AND u.friend_code <> ?
           AND EXISTS (
                 SELECT 1
                 FROM feedback f
@@ -217,55 +138,12 @@ function listThreads(PDO $dbh, int $meId, string $meCode, string $meEmail): arra
         ORDER BY last_time DESC
     ";
 
-    // placeholders: keep same pairs repeated (meCode, meEmail)
     $params = [
-        $meCode, $meEmail,  $meCode, $meEmail,   // last_message
-        $meCode, $meEmail,  $meCode, $meEmail,   // last_time
-        $meCode, $meEmail,                    // unread (receiver in me)
-        $meId,                                // u.id <> meId
-        $meCode, $meEmail,  $meCode, $meEmail,   // EXISTS conversation
-    ];
-
-    try {
-        $st = $dbh->prepare($sql);
-        $st->execute($params);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        // Optional safety: ensure unique by peer_id even if DB has weird duplicates
-        $unique = [];
-        foreach ($rows as $r) {
-            $k = (string)($r['peer_id'] ?? '');
-            if ($k === '') continue;
-            if (!isset($unique[$k]) || (string)$r['last_time'] > (string)$unique[$k]['last_time']) {
-                $unique[$k] = $r;
-            }
-        }
-        return array_values($unique);
-    } catch (Throwable $e) {
-        return [];
-    }
-}
-
-/**
- * Load history conversation:
- * Pulls both old email-based rows + new friend_code rows.
- */
-function loadHistory(PDO $dbh, string $meCode, string $meEmail, string $peerCode, string $peerEmail): array
-{
-    $sql = "
-        SELECT id, sender, receiver, feedbackdata, attachment, created_at
-        FROM feedback
-        WHERE channel = 'user_user'
-          AND (
-                (sender IN (?, ?) AND receiver IN (?, ?))
-             OR (sender IN (?, ?) AND receiver IN (?, ?))
-          )
-        ORDER BY created_at ASC, id ASC
-    ";
-
-    $params = [
-        $meCode, $meEmail, $peerCode, $peerEmail,
-        $peerCode, $peerEmail, $meCode, $meEmail
+        $meCode, $meEmail,  $meCode, $meEmail,
+        $meCode, $meEmail,  $meCode, $meEmail,
+        $meCode, $meEmail,
+        $meCode,
+        $meCode, $meEmail,  $meCode, $meEmail,
     ];
 
     try {
@@ -277,77 +155,80 @@ function loadHistory(PDO $dbh, string $meCode, string $meEmail, string $peerCode
     }
 }
 
-/**
- * Mark messages as read when opening chat
- */
-function markRead(PDO $dbh, string $meCode, string $meEmail, string $peerCode, string $peerEmail): void
-{
+/** Load history (include is_read for ticks) */
+function loadHistory(PDO $dbh, string $meCode, string $meEmail, string $peerCode, string $peerEmail): array {
     $sql = "
-        UPDATE feedback
-        SET is_read = 1, read_at = NOW()
+        SELECT id, sender, receiver, feedbackdata, attachment, created_at, is_read
+        FROM feedback
         WHERE channel = 'user_user'
-          AND receiver IN (?, ?)
-          AND sender IN (?, ?)
-          AND is_read = 0
+          AND (
+                (sender IN (?, ?) AND receiver IN (?, ?))
+             OR (sender IN (?, ?) AND receiver IN (?, ?))
+          )
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1000
     ";
+    $params = [$meCode,$meEmail,$peerCode,$peerEmail, $peerCode,$peerEmail,$meCode,$meEmail];
     try {
         $st = $dbh->prepare($sql);
-        $st->execute([$meCode, $meEmail, $peerCode, $peerEmail]);
+        $st->execute($params);
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Throwable $e) {
-        // ignore
+        return [];
     }
 }
 
-/**
- * Insert message:
- * ✅ ALWAYS store friend_code (your requirement)
- */
-function insertMessage(PDO $dbh, string $meCode, string $peerCode, string $text, ?string $attachmentName): void
-{
-    $sql = "
+/** Mark read */
+function markRead(PDO $dbh, string $meCode, string $meEmail, string $peerCode, string $peerEmail): void {
+    try {
+        $st = $dbh->prepare("
+            UPDATE feedback
+            SET is_read = 1, read_at = NOW()
+            WHERE channel='user_user'
+              AND receiver IN (?, ?)
+              AND sender IN (?, ?)
+              AND is_read = 0
+        ");
+        $st->execute([$meCode,$meEmail,$peerCode,$peerEmail]);
+    } catch (Throwable $e) {}
+}
+
+/** Insert message */
+function insertMessage(PDO $dbh, string $meCode, string $peerCode, string $text, ?string $attachmentName): void {
+    $st = $dbh->prepare("
         INSERT INTO feedback (sender, receiver, channel, title, feedbackdata, attachment, is_read, created_at)
         VALUES (?, ?, 'user_user', ?, ?, ?, 0, NOW())
-    ";
-    $title = ''; // required column (NOT NULL)
-    $st = $dbh->prepare($sql);
+    ");
+    $title = '';
     $st->execute([$meCode, $peerCode, $title, $text, $attachmentName]);
 }
 
-/**
- * Selected peer from URL
- */
-$peerRaw     = trim((string)($_GET['peer'] ?? ''));
-$peerRow     = null;
-$peerCode    = '';
-$peerEmail   = '';
+/** selected peer */
+$peerRaw = strtoupper(trim((string)($_GET['peer'] ?? '')));
+$peerRow = null;
+$peerCode = '';
+$peerEmail = '';
 $peerDisplay = '';
 
 if ($peerRaw !== '') {
-    $pr = resolvePeer($dbh, $peerRaw);
-    if ($pr['ok']) {
+    $pr = resolvePeerByCode($dbh, $peerRaw);
+    if (!empty($pr['ok'])) {
         $peerRow     = $pr['peer'];
         $peerCode    = (string)$pr['peerCode'];
         $peerEmail   = (string)$pr['peerEmail'];
         $peerDisplay = (string)$pr['peerDisplay'];
 
-        // prevent chatting with yourself
-        if ($peerCode === $meCode || ($peerEmail !== '' && $peerEmail === $meEmail)) {
-            $peerRow = null;
-            $peerCode = '';
-            $peerEmail = '';
-            $peerDisplay = '';
+        if ($peerCode === $meCode) {
+            $peerRow = null; $peerCode=''; $peerEmail=''; $peerDisplay='';
         }
     }
 }
 
-/**
- * POST send
- */
+/** send */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $peerRow && $peerCode !== '') {
     $text = trim((string)($_POST['message'] ?? ''));
     $attachmentName = null;
 
-    // optional attachment (kept simple)
     if (!empty($_FILES['attachment']['name'] ?? '')) {
         $tmp  = (string)($_FILES['attachment']['tmp_name'] ?? '');
         $name = basename((string)($_FILES['attachment']['name'] ?? ''));
@@ -356,9 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $peerRow && $peerCode !== '') {
             $dir = __DIR__ . '/attachment';
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
             $path = $dir . '/' . $safe;
-            if (move_uploaded_file($tmp, $path)) {
-                $attachmentName = $safe;
-            }
+            if (move_uploaded_file($tmp, $path)) $attachmentName = $safe;
         }
     }
 
@@ -366,23 +245,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $peerRow && $peerCode !== '') {
         insertMessage($dbh, $meCode, $peerCode, $text, $attachmentName);
     }
 
-    // keep same filename casing you use in your project
     header("Location: messages.php?peer=" . urlencode($peerCode));
     exit;
 }
 
-/**
- * Threads + history
- */
-$threads = listThreads($dbh, $meId, $meCode, $meEmail);
+$threads = listThreads($dbh, $meCode, $meEmail);
 
 $messages = [];
+$lastId = 0;
 if ($peerRow && $peerCode !== '') {
     markRead($dbh, $meCode, $meEmail, $peerCode, $peerEmail);
     $messages = loadHistory($dbh, $meCode, $meEmail, $peerCode, $peerEmail);
+    if (!empty($messages)) {
+        $last = end($messages);
+        $lastId = (int)($last['id'] ?? 0);
+        reset($messages);
+    }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -396,48 +276,12 @@ if ($peerRow && $peerCode !== '') {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 
-<style>
-    @media (min-width: 1280px) {
-  .xl\:ml-\[--w-side-m\] {
-    /* margin-left: var(--w-side-sm); */
-  }
-
-  .xl\:hidden {
-    display: none;
-  }
-
-  .xl\:w-\[680px\] {
-    width: 680px;
-  }
-
-  .xl\:w-\[694px\] {
-    width: 694px;
-  }
-
-  .xl\:space-y-6 > :not([hidden]) ~ :not([hidden]) {
-    --tw-space-y-reverse: 0;
-    margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
-    margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
-  }
-
-  .xl\:px-6 {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
-
-  .xl\:duration-500 {
-    transition-duration: 500ms;
-  }
-}
-</style>
-
 <body class="bg-white darkd">
 <div id="wrapper">
 
     <?php include __DIR__ . '/includes/header.php'; ?>
 
-    <main id="site__main" class="2xl:ml-[--w-side]  xl:ml-[--w-side-m] p-2.5 h-[calc(100vh-var(--m-top))] mt-[--m-top]">
-
+    <main id="site__main" class="2xl:ml-[--w-side] xl:ml-[--w-side-m] p-2.5 h-[calc(100vh-var(--m-top))] mt-[--m-top]">
         <div class="relative overflow-hidden border -m-2.5 dark:border-slate-700">
             <div class="flex bg-white dark:bg-dark2">
 
@@ -445,54 +289,44 @@ if ($peerRow && $peerCode !== '') {
                 <div class="md:w-[360px] relative border-r dark:border-slate-700">
                     <div id="side-chat" class="top-0 left-0 max-md:fixed max-md:w-5/6 max-md:h-screen bg-white z-50 max-md:shadow max-md:-translate-x-full dark:bg-dark2">
 
-                    <!-- heading title -->
-                            <div class="p-4 border-b dark:border-slate-700">
-                                
-                                <div class="flex mt-2 items-center justify-between">
-    
-                                    <h2 class="text-2xl font-bold text-black ml-1 dark:text-white"> Chats </h1>
-                                          
-                                    <!-- right action buttons -->
-                                    <div class="flex items-center gap-2.5">
-                                        <button class="group">
-                                            <ion-icon name="settings-outline" class="text-2xl flex group-aria-expanded:rotate-180"></ion-icon>
-                                        </button>
-                                        <div  class="md:w-[270px] w-full" uk-dropdown="pos: bottom-left; offset:10; animation: uk-animation-slide-bottom-small"> 
-                                            <nav>
-                                                <a href="#"> <ion-icon class="text-2xl shrink-0 -ml-1" name="checkmark-outline"></ion-icon> Mark all as read </a> 
-                                                <a href="#"> <ion-icon class="text-2xl shrink-0 -ml-1" name="checkmark-outline"></ion-icon> Delete all </a>  
-                                                <a href="#"> <ion-icon class="text-2xl shrink-0 -ml-1" name="notifications-outline"></ion-icon> notifications setting </a>  
-                                                <a href="#"> <ion-icon class="text-xl shrink-0 -ml-1" name="volume-mute-outline"></ion-icon> Mute notifications </a>     
-                                            </nav>
-                                        </div>
-                                        
-                                        <button class="">
-                                            <ion-icon name="checkmark-circle-outline" class="text-2xl flex"></ion-icon>
-                                        </button>
-    
-                                        <!-- mobile toggle menu -->
-                                        <button type="button" class="md:hidden" uk-toggle="target: #side-chat ; cls: max-md:-translate-x-full">
-                                            <ion-icon name="chevron-down-outline"></ion-icon>
-                                        </button>
-    
+                        <!-- heading title -->
+                        <div class="p-4 border-b dark:border-slate-700">
+                            <div class="flex mt-2 items-center justify-between">
+                                <h2 class="text-2xl font-bold text-black ml-1 dark:text-white"> Chats </h2>
+
+                                <div class="flex items-center gap-2.5">
+                                    <button class="group">
+                                        <ion-icon name="settings-outline" class="text-2xl flex group-aria-expanded:rotate-180"></ion-icon>
+                                    </button>
+                                    <div class="md:w-[270px] w-full" uk-dropdown="pos: bottom-left; offset:10; animation: uk-animation-slide-bottom-small">
+                                        <nav>
+                                            <a href="#"><ion-icon class="text-2xl shrink-0 -ml-1" name="checkmark-outline"></ion-icon> Mark all as read </a>
+                                            <a href="#"><ion-icon class="text-2xl shrink-0 -ml-1" name="notifications-outline"></ion-icon> notifications setting </a>
+                                            <a href="#"><ion-icon class="text-xl shrink-0 -ml-1" name="volume-mute-outline"></ion-icon> Mute notifications </a>
+                                        </nav>
                                     </div>
-    
+
+                                    <button class="">
+                                        <ion-icon name="checkmark-circle-outline" class="text-2xl flex"></ion-icon>
+                                    </button>
+
+                                    <button type="button" class="md:hidden" uk-toggle="target: #side-chat ; cls: max-md:-translate-x-full">
+                                        <ion-icon name="chevron-down-outline"></ion-icon>
+                                    </button>
                                 </div>
+                            </div>
 
                             <div class="relative mt-4">
-                                <div class="absolute left-3 bottom-1/2 translate-y-1/2 flex">
-                                    <ion-icon name="search" class="text-xl"></ion-icon>
-                                </div>
+                                <div class="absolute left-3 bottom-1/2 translate-y-1/2 flex"><ion-icon name="search" class="text-xl"></ion-icon></div>
                                 <input type="text" placeholder="Search" class="w-full !pl-10 !py-2 !rounded-lg">
                             </div>
                         </div>
 
-                        <!-- users list -->
                         <div class="space-y-2 p-2 overflow-y-auto md:h-[calc(100vh-204px)] h-[calc(100vh-130px)]">
-                                <?php foreach ($threads as $t): ?>
+                            <?php foreach ($threads as $t): ?>
                                 <?php
                                     $peerKey     = (string)($t['peer_key'] ?? '');
-                                    $peerDisplay = (string)($t['peer_display'] ?? $peerKey);
+                                    $pDisp       = (string)($t['peer_display'] ?? $peerKey);
                                     $lastMsg     = (string)($t['last_message'] ?? '');
                                     $lastTime    = (string)($t['last_time'] ?? '');
                                     $unread      = (int)($t['unread_count'] ?? 0);
@@ -507,7 +341,7 @@ if ($peerRow && $peerCode !== '') {
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2 mb-1.5">
                                             <div class="mr-auto text-sm text-black dark:text-white font-medium">
-                                                <?php echo h($peerDisplay); ?>
+                                                <?php echo h($pDisp); ?>
                                                 <div class="text-xs text-gray-500"><?php echo h($peerKey); ?></div>
                                             </div>
 
@@ -536,16 +370,19 @@ if ($peerRow && $peerCode !== '') {
 
                 <!-- message center -->
                 <div class="flex-1">
-
-                    <!-- chat heading -->
-                    <div class="flex items-center justify-between gap-2 px-6 py-3.5 z-10 border-b dark:border-slate-700 uk-animation-slide-top-medium">
+                    <div class="flex items-center justify-between gap-2 w- px-6 py-3.5 z-10 border-b dark:border-slate-700 uk-animation-slide-top-medium">
                         <div class="flex items-center sm:gap-4 gap-2">
                             <button type="button" class="md:hidden" uk-toggle="target: #side-chat ; cls: max-md:-translate-x-full">
                                 <ion-icon name="chevron-back-outline" class="text-2xl -ml-4"></ion-icon>
                             </button>
 
-                            <div class="cursor-pointer">
-                                <div class="text-base font-bold">
+                            <div class="relative cursor-pointer max-md:hidden" uk-toggle="target: .rightt ; cls: hidden">
+                                <img src="assets/images/avatars/avatar-6.jpg" alt="" class="w-8 h-8 rounded-full shadow">
+                                <div class="w-2 h-2 bg-teal-500 rounded-full absolute right-0 bottom-0 m-px"></div>
+                            </div>
+
+                            <div class="cursor-pointer" uk-toggle="target: .rightt ; cls: hidden">
+                                <div class="text-base font-bold" id="peerTitle">
                                     <?php echo h($peerRow ? $peerDisplay : 'Select a chat'); ?>
                                 </div>
                                 <div class="text-xs text-green-500 font-semibold">
@@ -553,11 +390,27 @@ if ($peerRow && $peerCode !== '') {
                                 </div>
                             </div>
                         </div>
+
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="button__ico">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
+                                    <path fill-rule="evenodd" d="M2 3.5A1.5 1.5 0 013.5 2h1.148a1.5 1.5 0 011.465 1.175l.716 3.223a1.5 1.5 0 01-1.052 1.767l-.933.267c-.41.117-.643.555-.48.95a11.542 11.542 0 006.254 6.254c.395.163.833-.07.95-.48l.267-.933a1.5 1.5 0 011.767-1.052l3.223.716A1.5 1.5 0 0118 15.352V16.5a1.5 1.5 0 01-1.5 1.5H15c-1.149 0-2.263-.15-3.326-.43A13.022 13.022 0 012.43 8.326 13.019 13.019 0 012 5V3.5z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <button type="button" class="hover:bg-slate-100 p-1.5 rounded-full">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                                    <path stroke-linecap="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                                </svg>
+                            </button>
+                            <button type="button" class="hover:bg-slate-100 p-1.5 rounded-full" uk-toggle="target: .rightt ; cls: hidden">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- chats bubble box -->
-                    <div class="w-full p-5 py-10 overflow-y-auto md:h-[calc(100vh-204px)] h-[calc(100vh-195px)]">
-
+                    <div id="chatBox" class="w-full p-5 py-10 overflow-y-auto md:h-[calc(100vh-204px)] h-[calc(100vh-195px)]">
                         <?php if (!$peerRow): ?>
                             <div class="py-10 text-center text-sm lg:pt-8">
                                 <div class="mt-8">
@@ -567,74 +420,71 @@ if ($peerRow && $peerCode !== '') {
                             </div>
                         <?php else: ?>
 
-                            <div class="text-sm font-medium space-y-6">
+                            <div id="chatStream" class="text-sm font-medium space-y-6">
                                 <?php
                                     $lastDay = '';
                                     foreach ($messages as $m):
+                                        $id     = (int)($m['id'] ?? 0);
                                         $sender = (string)($m['sender'] ?? '');
                                         $dt     = (string)($m['created_at'] ?? '');
-                                        $isMe   = (strcasecmp($sender, $meCode) === 0) || (strcasecmp($sender, $meEmail) === 0);
+                                        $isRead = (int)($m['is_read'] ?? 0);
+                                        $isMe   = (strcasecmp($sender, $meCode) === 0) || ($meEmail !== '' && strcasecmp($sender, $meEmail) === 0);
 
-                                        $day  = $dt ? date('Y-m-d', strtotime($dt)) : '';
-                                        if ($day !== '' && $day !== $lastDay):
-                                            $lastDay = $day;
+                                        $dk = $dt ? day_key($dt) : '';
+                                        if ($dk !== '' && $dk !== $lastDay):
+                                            $lastDay = $dk;
                                 ?>
-                                    <div class="flex justify-center">
+                                    <div class="flex justify-center dayDivider" data-day="<?php echo h($dk); ?>">
                                         <div class="font-medium text-gray-500 text-sm dark:text-white/70">
-                                            <?php echo h(fmt_day_label($dt)); ?>
+                                            <?php echo h(day_label($dt)); ?>
                                         </div>
                                     </div>
                                 <?php endif; ?>
 
                                 <?php if (!$isMe): ?>
-                                    <!-- received -->
-                                    <div class="flex gap-3">
+                                    <div class="flex gap-3 msgRow" data-id="<?php echo (int)$id; ?>" data-day="<?php echo h($dk); ?>">
                                         <img src="assets/images/avatars/avatar-2.jpg" alt="" class="w-9 h-9 rounded-full shadow">
-                                        <div class="px-4 py-2 rounded-[20px] max-w-sm bg-secondery">
-                                            <?php echo nl2br(h((string)($m['feedbackdata'] ?? ''))); ?>
-                                            <?php if (!empty($m['attachment'])): ?>
-                                                <div class="mt-2 text-xs">
-                                                    <a class="underline" target="_blank" href="attachment/<?php echo urlencode((string)$m['attachment']); ?>">
-                                                        <?php echo h((string)$m['attachment']); ?>
-                                                    </a>
-                                                </div>
-                                            <?php endif; ?>
+                                        <div>
+                                            <div class="px-4 py-2 rounded-[20px] max-w-sm bg-secondery">
+                                                <?php echo nl2br(h((string)($m['feedbackdata'] ?? ''))); ?>
+                                            </div>
+                                            <div class="mt-1 text-xs text-gray-500">
+                                                <?php echo h($peerDisplay); ?> • <?php echo h(fmt_time_full($dt)); ?>
+                                            </div>
                                         </div>
                                     </div>
                                 <?php else: ?>
-                                    <!-- sent -->
-                                    <div class="flex gap-2 flex-row-reverse items-end">
+                                    <div class="flex gap-2 flex-row-reverse items-end msgRow" data-id="<?php echo (int)$id; ?>" data-day="<?php echo h($dk); ?>">
                                         <img src="assets/images/avatars/avatar-3.jpg" alt="" class="w-5 h-5 rounded-full shadow">
-                                        <div class="px-4 py-2 rounded-[20px] max-w-sm bg-gradient-to-tr from-sky-500 to-blue-500 text-white shadow">
-                                            <?php echo nl2br(h((string)($m['feedbackdata'] ?? ''))); ?>
-                                            <?php if (!empty($m['attachment'])): ?>
-                                                <div class="mt-2 text-xs">
-                                                    <a class="underline" target="_blank" href="attachment/<?php echo urlencode((string)$m['attachment']); ?>">
-                                                        <?php echo h((string)$m['attachment']); ?>
-                                                    </a>
-                                                </div>
-                                            <?php endif; ?>
+                                        <div class="text-right">
+                                            <div class="px-4 py-2 rounded-[20px] max-w-sm bg-gradient-to-tr from-sky-500 to-blue-500 text-white shadow">
+                                                <?php echo nl2br(h((string)($m['feedbackdata'] ?? ''))); ?>
+                                            </div>
+                                            <div class="mt-1 text-xs text-gray-400">
+                                                <?php echo h($meDisplay); ?> • <?php echo h(fmt_time_full($dt)); ?>
+                                                <span class="ml-1 msgTicks" data-msgid="<?php echo (int)$id; ?>"><?php echo $isRead ? '✓✓' : '✓'; ?></span>
+                                            </div>
                                         </div>
                                     </div>
                                 <?php endif; ?>
-
                                 <?php endforeach; ?>
-
-                                <?php if (empty($messages)): ?>
-                                    <div class="p-4 text-sm text-gray-500">No messages yet.</div>
-                                <?php endif; ?>
                             </div>
 
                         <?php endif; ?>
                     </div>
 
-                    <!-- sending message area -->
+                    <div id="typingIndicator" class="hidden text-xs text-gray-500 px-6 pb-2"></div>
+
+                    <?php if ($peerRow): ?>
                     <div class="flex items-center md:gap-4 gap-2 md:p-3 p-2 overflow-hidden">
-<div id="message__wrap" class="flex items-center gap-2 h-full dark:text-white -mt-1.5">
-                            <button type="button"  class="shrink-0">
+
+                        <div id="message__wrap" class="flex items-center gap-2 h-full dark:text-white -mt-1.5">
+                            <button type="button" class="shrink-0">
                                 <ion-icon class="text-3xl flex" name="add-circle-outline"></ion-icon>
                             </button>
-                            <div class="dropbar pt-36 h-60 bg-gradient-to-t via-white from-white via-30% from-30% dark:from-slate-900 dark:via-900" uk-drop="stretch: x; target: #message__wrap ;animation:  slide-bottom ;animate-out: true; pos: top-left; offset:10 ; mode: click ; duration: 200">
+
+                            <div class="dropbar pt-36 h-60 bg-gradient-to-t via-white from-white via-30% from-30% dark:from-slate-900 dark:via-900"
+                                 uk-drop="stretch: x; target: #message__wrap ;animation:  slide-bottom ;animate-out: true; pos: top-left; offset:10 ; mode: click ; duration: 200">
                                 <div class="sm:w-full p-3 flex justify-center gap-5" uk-scrollspy="target: > button; cls: uk-animation-slide-bottom-small; delay: 100;repeat:true">
                                     <button type="button" class="bg-sky-50 text-sky-600 border border-sky-100 shadow-sm p-2.5 rounded-full shrink-0 duration-100 hover:scale-[1.15] dark:bg-dark3 dark:border-0">
                                         <ion-icon class="text-3xl flex" name="image"></ion-icon>
@@ -651,72 +501,273 @@ if ($peerRow && $peerCode !== '') {
                                 </div>
                             </div>
 
-                            <button type="button"  class="shrink-0">
+                            <button type="button" class="shrink-0">
                                 <ion-icon class="text-3xl flex" name="happy-outline"></ion-icon>
                             </button>
+
                             <div class="dropbar p-2" uk-drop="stretch: x; target: #message__wrap ;animation: uk-animation-scale-up uk-transform-origin-bottom-left ;animate-out: true; pos: top-left ; offset:2; mode: click ; duration: 200 ">
-                                <div class="sm:w-60 bg-white shadow-lg border rounded-xl  pr-0 dark:border-slate-700 dark:bg-dark3">
+                                <div class="sm:w-60 bg-white shadow-lg border rounded-xl pr-0 dark:border-slate-700 dark:bg-dark3">
                                     <h4 class="text-sm font-semibold p-3 pb-0">Send Imogi</h4>
                                     <div class="grid grid-cols-5 overflow-y-auto max-h-44 p-3 text-center text-xl">
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😊 </div>
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🤩 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😎</div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🥳 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😂 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🥰 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😡 </div> 
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😊 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🤩 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😎</div>
+                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😎 </div>
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🥳 </div>
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😂 </div>
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🥰 </div>
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😡 </div>
                                         <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🤔 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😊 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🤩 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😎</div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 🥳 </div>
-                                        <div class="hover:bg-secondery p-1.5 rounded-md hover:scale-125 cursor-pointer duration-200"> 😂 </div>
                                     </div>
                                 </div>
                             </div>
-    
-                            </div>
-                        <div class="relative flex-1">
-                            <?php if ($peerRow): ?>
-                                <form method="POST" enctype="multipart/form-data" class="flex items-center md:gap-4 gap-2 md:p-3 p-2 overflow-hidden">
-                                    <div class="relative flex-1">
-                                        <textarea name="message" placeholder="Write your message" rows="1"
-                                                  class="w-full resize-none bg-secondery rounded-full px-4 p-2"></textarea>
+                        </div>
 
-                                        <button type="submit" class="text-white shrink-0 p-2 absolute right-0.5 top-0">
-                                            <ion-icon class="text-xl flex" name="send-outline"></ion-icon>
-                                        </button>
-                                    </div>
-                                </form>
-                            <?php endif; ?>
+                        <div class="relative flex-1">
+                            <form id="sendForm" method="POST" enctype="multipart/form-data" class="flex items-center md:gap-4 gap-2 md:p-3 p-2 overflow-hidden">
+                                <div class="relative flex-1">
+                                    <textarea id="messageInput" name="message" placeholder="Write your message" rows="1"
+                                              class="w-full resize-none bg-secondery rounded-full px-4 p-2"></textarea>
+
+                                    <button type="submit" class="text-white shrink-0 p-2 absolute right-0.5 top-0">
+                                        <ion-icon class="text-xl flex" name="send-outline"></ion-icon>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
 
                         <button type="button" class="flex h-full dark:text-white">
                             <ion-icon class="text-3xl flex -mt-3" name="heart-outline"></ion-icon>
                         </button>
-
                     </div>
+                    <?php endif; ?>
 
                 </div>
 
             </div>
         </div>
-
     </main>
 </div>
 
 <script src="assets/js/uikit.min.js"></script>
 <script src="assets/js/simplebar.js"></script>
 <script src="assets/js/script.js"></script>
-
 <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
 <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+<script>
+(function(){
+    const peerCode = <?php echo $peerRow ? json_encode($peerCode) : '""'; ?>;
+    const peerDisplay = <?php echo $peerRow ? json_encode($peerDisplay) : '""'; ?>;
+    const meDisplay = <?php echo json_encode($meDisplay); ?>;
+
+    const chatBox = document.getElementById('chatBox');
+    const chatStream = document.getElementById('chatStream');
+    const typingIndicator = document.getElementById('typingIndicator');
+
+    let lastId = <?php echo (int)$lastId; ?>;
+    let lastDay = (function(){
+        const rows = document.querySelectorAll('.msgRow');
+        if (!rows.length) return '';
+        return rows[rows.length - 1].getAttribute('data-day') || '';
+    })();
+
+    function isNearBottom(el) {
+        if (!el) return true;
+        return (el.scrollHeight - el.scrollTop - el.clientHeight) < 140;
+    }
+    function scrollToBottom() {
+        if (!chatBox) return;
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+    if (peerCode && chatBox) scrollToBottom();
+
+    function escapeHtml(s){
+        return String(s ?? '')
+          .replace(/&/g,'&amp;')
+          .replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;')
+          .replace(/'/g,'&#039;');
+    }
+    function nl2br(s){ return escapeHtml(s).replace(/\n/g, '<br>'); }
+
+    function ensureDayDivider(dayKey, label) {
+        if (!dayKey || !chatStream) return;
+        const existing = chatStream.querySelector('.dayDivider[data-day="' + dayKey + '"]');
+        if (existing) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'flex justify-center dayDivider';
+        wrap.setAttribute('data-day', dayKey);
+
+        const inner = document.createElement('div');
+        inner.className = 'font-medium text-gray-500 text-sm dark:text-white/70';
+        inner.textContent = label || dayKey;
+
+        wrap.appendChild(inner);
+        chatStream.appendChild(wrap);
+    }
+
+    function updateTicksForMyMessage(id, isRead){
+        const el = document.querySelector('.msgTicks[data-msgid="' + String(id) + '"]');
+        if (el) el.textContent = isRead ? '✓✓' : '✓';
+    }
+
+    function appendMessage(item) {
+        if (!chatBox || !chatStream) return;
+
+        const nearBottom = isNearBottom(chatBox);
+
+        if (item.day_key && item.day_key !== lastDay) {
+            ensureDayDivider(item.day_key, item.day_label);
+            lastDay = item.day_key;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'msgRow';
+        row.setAttribute('data-id', item.id);
+        row.setAttribute('data-day', item.day_key || '');
+
+        const who = item.sender_name || (item.is_me ? (meDisplay || 'You') : (peerDisplay || 'User'));
+        const timeLine = who + ' • ' + (item.time_label || '');
+
+        if (item.is_me) {
+            row.className += ' flex gap-2 flex-row-reverse items-end';
+            row.innerHTML = `
+                <img src="assets/images/avatars/avatar-3.jpg" alt="" class="w-5 h-5 rounded-full shadow">
+                <div class="text-right">
+                    <div class="px-4 py-2 rounded-[20px] max-w-sm bg-gradient-to-tr from-sky-500 to-blue-500 text-white shadow"></div>
+                    <div class="mt-1 text-xs text-gray-400">
+                        <span class="metaText"></span>
+                        <span class="ml-1 msgTicks" data-msgid=""></span>
+                    </div>
+                </div>
+            `;
+            row.querySelector('div.px-4').innerHTML = nl2br(item.text || '');
+            row.querySelector('.metaText').textContent = timeLine;
+            const ticks = row.querySelector('.msgTicks');
+            ticks.setAttribute('data-msgid', String(item.id || ''));
+            ticks.textContent = (item.is_read && Number(item.is_read) === 1) ? '✓✓' : '✓';
+        } else {
+            row.className += ' flex gap-3';
+            row.innerHTML = `
+                <img src="assets/images/avatars/avatar-2.jpg" alt="" class="w-9 h-9 rounded-full shadow">
+                <div>
+                    <div class="px-4 py-2 rounded-[20px] max-w-sm bg-secondery"></div>
+                    <div class="mt-1 text-xs text-gray-500"></div>
+                </div>
+            `;
+            row.querySelector('div.px-4').innerHTML = nl2br(item.text || '');
+            row.querySelector('.text-xs').textContent = timeLine;
+        }
+
+        chatStream.appendChild(row);
+        if (nearBottom) scrollToBottom();
+    }
+
+    // -----------------------
+    // Long-poll messages
+    // -----------------------
+    let stop = false;
+    async function longPollLoop(){
+        if (!peerCode) return;
+
+        while (!stop) {
+            try {
+                const url =
+                  'ajax/user_chat_poll.php?peer=' + encodeURIComponent(peerCode) +
+                  '&after=' + encodeURIComponent(String(lastId)) +
+                  '&wait=20';
+
+                const res = await fetch(url, { cache: 'no-store' });
+                const data = await res.json();
+
+                if (data && data.ok) {
+                    if (Array.isArray(data.items)) {
+                        for (const item of data.items) {
+                            if (item.id && item.id > lastId) {
+                                appendMessage(item);
+                                lastId = item.id;
+                            } else if (item.is_me && item.id) {
+                                // if server returns older rows with updated is_read
+                                updateTicksForMyMessage(item.id, Number(item.is_read) === 1);
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                await new Promise(r => setTimeout(r, 700));
+            }
+        }
+    }
+
+    // -----------------------
+    // Typing
+    // -----------------------
+    const input = document.getElementById('messageInput');
+    const form  = document.getElementById('sendForm');
+
+    let typingTimer = null;
+    let lastTypingSent = 0;
+
+    async function sendTyping(isTyping){
+        if (!peerCode) return;
+        try {
+            await fetch('ajax/chat_typing.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: 'peer=' + encodeURIComponent(peerCode) + '&typing=' + (isTyping ? '1' : '0')
+            });
+        } catch(e) {}
+    }
+
+    function onType(){
+        const now = Date.now();
+        if (now - lastTypingSent > 700) {
+            sendTyping(true);
+            lastTypingSent = now;
+        }
+        if (typingTimer) clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => sendTyping(false), 1800);
+    }
+
+    if (input) input.addEventListener('input', onType);
+
+    if (form) {
+        form.addEventListener('submit', () => {
+            if (typingTimer) clearTimeout(typingTimer);
+            sendTyping(false);
+            // keep user at bottom after sending
+            setTimeout(scrollToBottom, 120);
+        });
+    }
+
+    async function pollTyping(){
+        if (!peerCode || !typingIndicator) return;
+        try {
+            const res = await fetch('ajax/chat_typing_check.php?peer=' + encodeURIComponent(peerCode), { cache:'no-store' });
+            const data = await res.json();
+            if (data && data.ok && data.typing) {
+                const nm = data.peer_name || peerDisplay || 'User';
+                typingIndicator.textContent = nm + ' is typing...';
+                typingIndicator.classList.remove('hidden');
+            } else {
+                typingIndicator.classList.add('hidden');
+                typingIndicator.textContent = '';
+            }
+        } catch(e) {}
+    }
+
+    if (peerCode) {
+        longPollLoop();
+        pollTyping();
+        setInterval(pollTyping, 650);
+    }
+
+    window.addEventListener('beforeunload', () => { stop = true; });
+
+})();
+</script>
+
 </body>
 </html>
