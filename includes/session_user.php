@@ -24,6 +24,36 @@ function requireUserLogin(): void
         header("Location: index.php?session=reset");
         exit;
     }
+
+    // ✅ Online/Offline support: bump last_seen periodically for any authenticated page hit
+    // Throttled so we don't write on every single request.
+    try {
+        bumpUserLastSeenThrottled();
+    } catch (Throwable $e) {
+        // ignore presence update failures
+    }
+}
+
+/**
+ * Update current user's last_seen at most once every N seconds.
+ * This makes Online/Offline switch to Online as soon as the user signs in and navigates pages.
+ */
+function bumpUserLastSeenThrottled(int $minIntervalSeconds = 20): void
+{
+    $uid = (int)($_SESSION['user_id'] ?? 0);
+    if ($uid <= 0) return;
+
+    $lastPing = (int)($_SESSION['__last_seen_ping_ts'] ?? 0);
+    if ($lastPing > 0 && (time() - $lastPing) < $minIntervalSeconds) return;
+
+    require_once __DIR__ . '/../admin/controller.php';
+    $controller = new Controller();
+    $dbh = $controller->pdo();
+
+    $st = $dbh->prepare("UPDATE users SET last_seen = NOW() WHERE id = :id LIMIT 1");
+    $st->execute([':id' => $uid]);
+
+    $_SESSION['__last_seen_ping_ts'] = time();
 }
 
 function setUserSession(array $user): void

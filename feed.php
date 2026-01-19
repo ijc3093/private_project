@@ -551,7 +551,7 @@ $loggedEmail = $_SESSION['user_login'];
                     <div class="lg:space-y-4 lg:pb-8 max-lg:grid sm:grid-cols-2 max-lg:gap-6" 
                     uk-sticky="media: 1024; end: #js-oversized; offset: 80">
                     <!-- Pro Members -->
-                    <div class="box p-5 px-6 border1 dark:bg-dark2">
+                    <!-- <div class="box p-5 px-6 border1 dark:bg-dark2">
                         
                         <div class="flex justify-between text-black dark:text-white">
                             <h3 class="font-bold text-base"> Pro Members </h3>
@@ -619,10 +619,10 @@ $loggedEmail = $_SESSION['user_login'];
                         </div>
 
 
-                    </div>
+                    </div> -->
 
                     <!-- Trends -->
-                    <div class="box p-5 px-6 border1 dark:bg-dark2">
+                    <!-- <div class="box p-5 px-6 border1 dark:bg-dark2">
                         
                         <div class="flex justify-between text-black dark:text-white">
                             <h3 class="font-bold text-base"> Trends for you </h3>
@@ -677,7 +677,7 @@ $loggedEmail = $_SESSION['user_login'];
                         </div>
 
                         
-                    </div>
+                    </div> -->
 
                 </div>
                 </div>

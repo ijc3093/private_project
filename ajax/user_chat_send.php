@@ -51,13 +51,24 @@ try {
 
     $id = (int)$dbh->lastInsertId();
 
+    // Keep response shape consistent with ajax/user_chat_poll.php items
+    $nowTs    = time();
+    $created  = date('Y-m-d H:i:s', $nowTs);
+    $dayKey   = date('Y-m-d', $nowTs);
+    $dayLabel = date('M d, Y', $nowTs);
+    $timeLabel= date('M d, Y h:i A', $nowTs);
+
     echo json_encode([
-        'ok'=>true,
-        'item'=>[
-            'id'=>$id,
-            'is_me'=>true,
-            'feedbackdata'=>$msg,
-            'time'=>date('M d, Y h:i A'),
+        'ok'  => true,
+        'item'=> [
+            'id'         => $id,
+            'is_me'      => true,
+            'text'       => $msg,
+            'created_at' => $created,
+            'day_key'    => $dayKey,
+            'day_label'  => $dayLabel,
+            'time_label' => $timeLabel,
+            'is_read'    => 0,
         ]
     ]);
     exit;

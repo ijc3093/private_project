@@ -30,6 +30,7 @@ try {
         FROM chat_typing ct
         JOIN users u ON u.friend_code = ct.sender_code
         WHERE ct.sender_code = :peer AND ct.receiver_code = :me
+        ORDER BY ct.updated_at DESC
         LIMIT 1
     ");
     $st->execute([':peer'=>$peer, ':me'=>$meCode]);

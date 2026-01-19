@@ -31,6 +31,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 // ✅ this function must exist in includes/session_user.php
                 setUserSession($user);
 
+                // ✅ Online/Offline: mark user as online immediately on successful login
+                try {
+                    $uid = (int)($_SESSION['user_id'] ?? 0);
+                    if ($uid > 0) {
+                        $stSeen = $controller->pdo()->prepare("UPDATE users SET last_seen = NOW() WHERE id = :id LIMIT 1");
+                        $stSeen->execute([':id' => $uid]);
+                    }
+                } catch (Throwable $e) {
+                    // ignore presence update failures
+                }
+
                 header("Location: feed.php");
                 exit;
             } else {

@@ -5,8 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/session_user.php';
 requireUserLogin();
 
-require_once __DIR__ . '/includes/user_identity.php';
 require_once __DIR__ . '/admin/controller.php';
+require_once __DIR__ . '/includes/user_identity.php';
 
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
@@ -42,18 +42,15 @@ if (isset($_GET['del'])) {
 $st = $dbh->prepare("
   SELECT
     uc.id,
-    uc.display_name AS nickname,
+    uc.display_name,
     u.id AS friend_user_id,
-    u.name,
-    u.username,
     u.friend_code,
     u.email AS friend_email
   FROM user_contacts uc
   LEFT JOIN users u ON u.id = uc.friend_user_id
   WHERE uc.owner_user_id = :me
-  ORDER BY
-    COALESCE(NULLIF(u.name,''), NULLIF(u.username,''), u.friend_code, u.email, uc.display_name) ASC,
-    uc.id DESC
+    AND NULLIF(TRIM(uc.display_name), '') IS NOT NULL
+  ORDER BY uc.display_name ASC, uc.id DESC
 ");
 $st->execute([':me' => $meId]);
 $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -80,7 +77,7 @@ function h(string $s): string {
         .bgtransparent{background-color:#3f3434}
         .page-title{margin-top:5%;margin-bottom:15px}
         .btn-btn-primary,.btn{display:inline-block;margin-bottom:0;font-weight:normal;text-align:center;vertical-align:middle;cursor:pointer;border:1px solid transparent;white-space:nowrap;padding:12px 16px;font-size:14px;line-height:1.42857143;border-radius:4px;user-select:none;background:#d5c2b0;;margin-top:15px}
-        .rowline{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eee;padding:10px 0}
+        .rowline{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #eee;padding:10px 0}
         .sub{color:#777;font-size:12px}
     </style>
 </head>
@@ -115,37 +112,46 @@ function h(string $s): string {
                 <a class="btn-btn-primary" href="add_contact.php">Add Contact</a>
             </div>
 
+            <!-- 🔎 Contact search (client-side, no SQL needed) -->
+            <div style="margin-bottom:12px;">
+                <input id="contactSearch" type="text"
+                       class="w-full !pl-4 !font-normal bgtransparent h-12 !text-sm card"
+                       placeholder="Search contacts by name or friend code...">
+            </div>
+
             <?php if (empty($rows)): ?>
                 <div class="alert alert-info"><b>No contacts yet.</b></div>
             <?php else: ?>
                 <?php foreach ($rows as $c): ?>
                     <?php
-                        $nickname = trim((string)($c['nickname'] ?? ''));
-                        $name     = trim((string)($c['name'] ?? ''));
-                        $username = trim((string)($c['username'] ?? ''));
-                        $code     = trim((string)($c['friend_code'] ?? ''));
-                        $email    = trim((string)($c['friend_email'] ?? ''));
-
-                        // ✅ PRIMARY: real user name -> username -> friend_code -> email
-                        $realLabel = $name !== '' ? $name : ($username !== '' ? $username : ($code !== '' ? $code : $email));
-
-                        // ✅ If you want nicknames, show nickname but keep real identity below:
-                        $label = $nickname !== '' ? $nickname : $realLabel;
-
-                        // Show friend_code under it (always)
-                        $sub = $code !== '' ? $code : $email;
-
-                        // ✅ Compose must use friend_code
+                        // Contacts list should ONLY show what the user saved as a name.
+                        // Unknown friend codes should NOT be stored here.
+                        $label = trim((string)($c['display_name'] ?? ''));
+                        $code  = trim((string)($c['friend_code'] ?? ''));
+                        $email = trim((string)($c['friend_email'] ?? ''));
+                        $sub   = $code !== '' ? $code : $email;
                         $toParam = $code !== '' ? $code : $email;
                     ?>
-                    <div class="rowline">
+                    <div class="rowline" data-id="<?php echo (int)$c['id']; ?>" data-name="<?php echo h(strtolower($label)); ?>" data-code="<?php echo h(strtolower($sub)); ?>">
                         <div>
                             <div style="font-weight:700; color:#d5c2b0;"><?php echo h($label); ?></div>
                             <div class="sub"><?php echo h($sub); ?></div>
                         </div>
 
                         <div style="display:flex;gap:8px;">
+                            <button type="button" class="btn btn-info btn-xs" onclick="openInlineEdit(<?php echo (int)$c['id']; ?>)">
+                                <i class="fa fa-pencil"></i> Rename
+                            </button>
+
+                            <button type="button" class="btn btn-secondary btn-xs" onclick="undoRename(<?php echo (int)$c['id']; ?>)">
+                                <i class="fa fa-undo"></i> Undo
+                            </button>
+
                           
+                            <a class="btn btn-warning btn-xs" href="add_contact.php?edit=1&id=<?php echo (int)$c['id']; ?>">
+                                <i class="fa fa-edit"></i> Edit
+                            </a>
+
                             <a class="btn btn-success btn-xs" href="user_sendreply.php?to=<?php echo urlencode($toParam); ?>">
                                 <i class="fa fa-comment"></i> Message
                             </a>
@@ -156,6 +162,19 @@ function h(string $s): string {
                                onclick="return confirm('Delete this contact?');">
                                <i class="fa fa-trash"></i>Delete
                             </a>
+                        </div>
+
+                        <!-- ✏️ Inline rename box (does not change your layout; only appears when you click Rename) -->
+                        <div id="editBox-<?php echo (int)$c['id']; ?>" style="display:none; margin-top:10px; width:100%;">
+                            <input id="editInput-<?php echo (int)$c['id']; ?>" type="text"
+                                   class="w-full !pl-4 !font-normal bgtransparent h-12 !text-sm card"
+                                   value="<?php echo h($label); ?>"
+                                   placeholder="Enter corrected name...">
+
+                            <div style="margin-top:8px; display:flex; gap:8px;">
+                                <button type="button" class="btn-btn-primary" onclick="saveInlineEdit(<?php echo (int)$c['id']; ?>)">Save</button>
+                                <button type="button" class="btn btn-default" onclick="closeInlineEdit(<?php echo (int)$c['id']; ?>)">Cancel</button>
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -170,5 +189,86 @@ function h(string $s): string {
 <script src="assets/js/script.js"></script>
 <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
 <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+<script>
+  // 🔎 Search contacts
+  (function(){
+    const searchEl = document.getElementById('contactSearch');
+    if (!searchEl) return;
+    searchEl.addEventListener('input', function() {
+      const q = (this.value || '').trim().toLowerCase();
+      document.querySelectorAll('.rowline[data-id]').forEach(row => {
+        const name = row.getAttribute('data-name') || '';
+        const code = row.getAttribute('data-code') || '';
+        row.style.display = (q === '' || name.includes(q) || code.includes(q)) ? '' : 'none';
+      });
+    });
+  })();
+
+  function openInlineEdit(id) {
+    const box = document.getElementById('editBox-' + id);
+    if (box) box.style.display = 'block';
+  }
+  function closeInlineEdit(id) {
+    const box = document.getElementById('editBox-' + id);
+    if (box) box.style.display = 'none';
+  }
+
+  async function saveInlineEdit(id) {
+    const input = document.getElementById('editInput-' + id);
+    const newName = (input ? input.value : '').trim();
+    if (!newName) {
+      alert('Name is required.');
+      return;
+    }
+
+    const res = await fetch('ajax/contact_rename.php', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+      body: new URLSearchParams({ contact_id: String(id), display_name: newName })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) {
+      alert(data.error || 'Rename failed.');
+      return;
+    }
+
+    // Update UI instantly
+    const row = document.querySelector('.rowline[data-id="' + id + '"]');
+    if (row) {
+      const titleDiv = row.querySelector('div[style*="font-weight:700"]');
+      if (titleDiv) titleDiv.textContent = newName;
+      row.setAttribute('data-name', newName.toLowerCase());
+    }
+
+    closeInlineEdit(id);
+  }
+
+  async function undoRename(id) {
+    const res = await fetch('ajax/contact_undo_rename.php', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+      body: new URLSearchParams({ contact_id: String(id) })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) {
+      alert(data.error || 'Nothing to undo.');
+      return;
+    }
+
+    const newLabel = data.display_name || '';
+    const row = document.querySelector('.rowline[data-id="' + id + '"]');
+    if (row) {
+      const titleDiv = row.querySelector('div[style*="font-weight:700"]');
+      if (titleDiv) titleDiv.textContent = newLabel;
+      row.setAttribute('data-name', newLabel.toLowerCase());
+      const input = document.getElementById('editInput-' + id);
+      if (input) input.value = newLabel;
+    }
+  }
+</script>
+
 </body>
 </html>

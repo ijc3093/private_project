@@ -339,6 +339,7 @@ menu {
   list-style: none;
   margin: 0;
   padding: 0;
+  color: rgb(119 89 89 / var(--tw-text-opacity));
 }
 
 /*
@@ -628,7 +629,7 @@ body {
 @media (prefers-color-scheme: dark) {
   body {
     --tw-text-opacity: 1;
-    color: rgb(255 255 255 / var(--tw-text-opacity));
+    color: rgb(119 89 89 / var(--tw-text-opacity));
   }
 }
 
@@ -1365,7 +1366,7 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: capitalize;
   letter-spacing: 0.025em;
   --tw-text-opacity: 1;
-  color: rgb(0 0 0 / var(--tw-text-opacity));
+  color: rgb(119 89 89 / var(--tw-text-opacity));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -4624,28 +4625,28 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .bg-white {
-  --tw-bg-opacity: 1;
-  background-color: rgb(255 255 255 / var(--tw-bg-opacity));
+  --tw-bg-opacity: 1;rgb(29 41 59)
+  background-color: rgb(29 41 59 / var(--tw-bg-opacity));
 }
 
 .bg-white\/10 {
-  background-color: rgb(255 255 255 / 0.1);
+  background-color: rgb(29 41 59 / 0.1);
 }
 
 .bg-white\/20 {
-  background-color: rgb(255 255 255 / 0.2);
+  background-color: rgb(29 41 59 / 0.2);
 }
 
 .bg-white\/60 {
-  background-color: rgb(255 255 255 / 0.6);
+  background-color: rgb(29 41 59 / 0.6);
 }
 
 .bg-white\/80 {
-  background-color: rgb(255 255 255 / 0.8);
+  background-color: rgb(29 41 59 / 0.8);
 }
 
 .bg-white\/95 {
-  background-color: rgb(255 255 255 / 0.95);
+  background-color: rgb(29 41 59 / 0.95);
 }
 
 .bg-yellow-100 {
@@ -6554,15 +6555,15 @@ h1, h2, h3, h4, h5, h6 {
 
   .dark\:border-slate-700 {
     --tw-border-opacity: 1;
-    border-color: rgb(51 65 85 / var(--tw-border-opacity));
+    border-color: rgb(44 71 112 / var(--tw-border-opacity));
   }
 
   .dark\:border-slate-700\/40 {
-    border-color: rgb(51 65 85 / 0.4);
+    border-color: rgb(44 71 112 / 0.4);
   }
 
   .dark\:border-slate-700\/60 {
-    border-color: rgb(51 65 85 / 0.6);
+    border-color: rgb(44 71 112 / 0.6);
   }
 
   .dark\:border-slate-800 {
@@ -6845,19 +6846,19 @@ h1, h2, h3, h4, h5, h6 {
 
   .dark\:text-white {
     --tw-text-opacity: 1;
-    color: rgb(255 255 255 / var(--tw-text-opacity));
+    color: rgb(119 89 89 / var(--tw-text-opacity));
   }
 
   .dark\:text-white\/70 {
-    color: rgb(255 255 255 / 0.7);
+    color: rgb(119 89 89 / 0.7);
   }
 
   .dark\:text-white\/80 {
-    color: rgb(255 255 255 / 0.8);
+    color: rgb(119 89 89 / 0.8);
   }
 
   .dark\:text-white\/90 {
-    color: rgb(255 255 255 / 0.9);
+    color: rgb(119 89 89 / 0.9);
   }
 
   .dark\:ring-slate-600 {
@@ -8277,8 +8278,8 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .xl\:px-6 {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
   }
 
   .xl\:duration-500 {

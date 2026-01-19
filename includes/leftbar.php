@@ -6,12 +6,12 @@ requireUserLogin();
 
     <nav id="side">        
         <ul>
-            <li class="active"><a href="feed.php"><img src="assets/images/icons/home.png" alt="feeds" class="w-6"><span> Feed </span></a></li>
-            <li><a href="timeline.php"><img src="assets/images/icons/message.png" alt="profile" class="w-5"><span>Timeline</span></a></li> 
-            <li><a href="contact_requests.php"><img src="assets/images/icons/video.png" alt="request" class="w-6"><span> Contact Requests </span></a></li>
-            <li><a href="support.php"><img src="assets/images/icons/video.png" alt="request" class="w-6"><span> Suppot </span></a></li>
-            <li><a href="contacts.php"><img src="assets/images/icons/video.png" alt="request" class="w-6"><span> Contact </span></a></li>
-            <li><a href="logout.php"><img src="assets/images/icons/video.png" alt="request" class="w-6"><span> Logout </span></a></li>
+            <li class="active"><a href="feed.php">Feed </a></li>
+            <li><a href="timeline.php">Timeline</a></li> 
+            <li><a href="contact_requests.php"> Contact Requests</a></li>
+            <li><a href="support.php">Suppot </a></li>
+            <li><a href="contacts.php">Contact </a></li>
+            <li><a href="logout.php">Logout </a></li>
         </ul>
         <button type="button" class="flex items-center gap-4 py-2 px-4 w-full font-medium text-sm text-black dark:text-white" uk-toggle="target: #show__more; cls: !hidden uk-animation-fade"> 
             <svg class="bg-gray-200 rounded-full w-6 h-6 dark:bg-slate-700" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg> 

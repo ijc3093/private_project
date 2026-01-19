@@ -10,10 +10,10 @@ requireUserLogin();
 require_once __DIR__ . '/../admin/controller.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Pragma: no-cache");
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 
-function j(array $arr): void { echo json_encode($arr); exit; }
+function j($arr) { echo json_encode($arr); exit; }
 
 $meCode = strtoupper(trim((string)userFriendCode()));
 if ($meCode === '') j(['ok'=>false,'error'=>'Missing my friend code']);
@@ -37,7 +37,8 @@ try {
     $st->execute([':c'=>$peer]);
     if (!$st->fetchColumn()) j(['ok'=>false,'error'=>'Peer not found']);
 
-    // upsert typing state
+    // chat_typing schema expectation:
+    // sender_code, receiver_code, is_typing, updated_at
     $sql = "
         INSERT INTO chat_typing (sender_code, receiver_code, is_typing, updated_at)
         VALUES (:s, :r, :t, NOW())
@@ -45,11 +46,9 @@ try {
             is_typing = VALUES(is_typing),
             updated_at = NOW()
     ";
+
     $q = $dbh->prepare($sql);
     $q->execute([':s'=>$meCode, ':r'=>$peer, ':t'=>$typing]);
-
-    // optional: also update last_seen if you add column later (safe to ignore if not exists)
-    // $dbh->prepare("UPDATE users SET last_seen = NOW() WHERE friend_code = :c")->execute([':c'=>$meCode]);
 
     j(['ok'=>true]);
 } catch (Throwable $e) {

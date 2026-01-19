@@ -1014,3 +1014,195 @@ input:checked + .switch-button:before {
   overflow-y: hidden;
   overflow-x: scroll;
 }
+
+/* ========================================================================
+   Responsive: Tablet & Mobile (Chat + Layout)
+   - No existing code removed; only overrides for smaller screens.
+ ========================================================================== */
+
+/* Prevent horizontal scroll on small devices */
+@media (max-width: 1024px) {
+  html, body {
+    overflow-x: hidden;
+  }
+}
+
+/* Tablet adjustments */
+@media (max-width: 1024px) {
+  /* Chat header: allow items to wrap instead of overflowing */
+  #site__main .uk-animation-slide-top-medium {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  /* Rename box: keep inside viewport */
+  #renamePeerBox .flex {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #renamePeerBox input {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Tablet: slightly tighter chat list + prevent long text overflow */
+  a.chatItem .chatLastMsg {
+    max-width: 34vw;
+    display: block;
+  }
+  a.chatItem .chatName {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  #chatStream .max-w-sm {
+    max-width: 60vw;
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  /* Sidebar overlay should take full width on phones */
+  #side-chat {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+  }
+
+  /* Sidebar list: dynamic viewport height so the list doesn't get cut off */
+  #side-chat .space-y-2.p-2.overflow-y-auto {
+    height: calc(100dvh - 190px) !important;
+  }
+
+  /* Sidebar chat items: compact layout on phones */
+  a.chatItem {
+    gap: 12px !important;
+    padding: 10px 12px !important;
+  }
+  a.chatItem .w-14.h-14 {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  a.chatItem .chatLastMsg {
+    display: block;
+    max-width: 58vw;
+  }
+  a.chatItem .chatCode {
+    font-size: 11px;
+  }
+  a.chatItem .chatUnknown {
+    font-size: 10px;
+    padding: 2px 8px;
+  }
+
+  /* Make the header + compose area fit small screens */
+  .uk-animation-slide-top-medium {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  /* Peer title: prevent overflow */
+  #peerTitle {
+    max-width: 62vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Allow the code/unknown chips to wrap if needed */
+  a.chatItem .text-xs.text-gray-500 {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* Chat stream: use dynamic height so it doesn't jump on mobile */
+  #chatBox {
+    height: calc(100dvh - 245px) !important;
+  }
+
+  /* Composer: stack nicely and keep the send button visible */
+  #sendForm {
+    padding: 8px !important;
+  }
+  #sendForm textarea {
+    padding-right: 52px !important; /* space for send button */
+  }
+
+  /* Reduce padding so chat fits nicely */
+  #chatBox {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    padding-top: 18px !important;
+    padding-bottom: 18px !important;
+  }
+
+  /* Message bubbles: avoid overflow */
+  #chatStream .max-w-sm {
+    max-width: 82vw;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  /* Composer row: allow wrap; keep textarea usable */
+  #message__wrap {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  #sendForm {
+    width: 100%;
+  }
+  #sendForm textarea {
+    font-size: 16px; /* prevents iOS zoom */
+    line-height: 1.35;
+    min-height: 42px;
+  }
+
+  /* Right-side action icons: prevent squeezing */
+  #message__wrap > button {
+    flex: 0 0 auto;
+  }
+}
+
+/* Small phones */
+@media (max-width: 420px) {
+  /* Slightly smaller avatars to save space */
+  #chatStream img {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* =========================
+   Online/Offline indicators
+   (added, no removals)
+   ========================= */
+
+/* Pulse effect when a peer is online */
+.peerOnlineDot.presence-online {
+  position: relative;
+}
+
+.peerOnlineDot.presence-online::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid rgba(34, 197, 94, 0.35); /* subtle green ring */
+  animation: presencePulse 1.6s ease-out infinite;
+}
+
+@keyframes presencePulse {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  70% { transform: scale(1.25); opacity: 0.2; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* Mobile/tablet: keep UI clean by hiding long "Last seen ..." text in sidebar */
+@media (max-width: 768px) {
+  .peerOnlineLabel {
+    display: none !important;
+  }
+}
