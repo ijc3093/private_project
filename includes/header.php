@@ -345,7 +345,20 @@ foreach ($chatThreads as $t) {
         }
     }
 
-    function esc(s) {
+    
+    async function pollUnreadCount() {
+        try {
+            const res = await fetch('/Business_only3/ajax/user_chat_unread_poll.php', { cache: 'no-store' });
+            const data = await res.json();
+            if (data && data.ok) {
+                setBadge(data.unread || 0);
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
+
+function esc(s) {
         return String(s || '').replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
     }
 
@@ -402,7 +415,7 @@ foreach ($chatThreads as $t) {
         if (busy) return;
         busy = true;
         try {
-            const res = await fetch('ajax/user_chat_poll.php?mode=unread_threads', { cache: 'no-store' });
+            const res = await fetch('/Business_only3/ajax/user_chat_poll.php?mode=unread_threads', { cache: 'no-store' });
             const data = await res.json();
             if (data && data.ok) {
                 renderDropdown(data.items || [], data.unknown_unread || 0);
@@ -414,7 +427,61 @@ foreach ($chatThreads as $t) {
         }
     }
 
+    pollUnreadCount();
     pollUnreadThreads();
-    setInterval(pollUnreadThreads, 4000);
+
+    // ✅ Presence keepalive: keep ME online while I stay on a page (no clicks / no navigation)
+    // This endpoint bumps my last_seen server-side. All users running this header will stay 'Online'.
+    setInterval(() => {
+        fetch('/Business_only3/ajax/user_presence_ping.php', { cache: 'no-store' }).catch(() => {});
+    }, 20000);
+
+    setInterval(() => { pollUnreadCount(); pollUnreadThreads(); }, 4000);
+})();
+</script>
+
+
+
+
+<script>
+(function(){
+  // Presence heartbeat: keep users.last_seen fresh while logged in.
+  // Tries multiple URL forms so it works even if the folder name changes.
+  const candidates = [
+    '/Business_only3/ajax/me_presence_heartbeat.php',
+    '/ajax/me_presence_heartbeat.php',
+    'ajax/me_presence_heartbeat.php',
+    '../ajax/me_presence_heartbeat.php'
+  ];
+
+  async function heartbeat(){
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) continue;
+        const data = await res.json().catch(()=>null);
+        if (data && data.ok) return true;
+      } catch(e) {}
+    }
+    return false;
+  }
+
+  // Run immediately, then every 20 seconds (more responsive)
+  heartbeat();
+  setInterval(heartbeat, 20000);
+
+  // Also bump on activity (cheap & helps if timers pause)
+  let t=null;
+  function bumpSoon(){
+    if (t) return;
+    t=setTimeout(()=>{ t=null; heartbeat(); }, 1500);
+  }
+  ['mousemove','keydown','touchstart','scroll','click'].forEach(ev=>{
+    window.addEventListener(ev, bumpSoon, { passive:true });
+  });
 })();
 </script>

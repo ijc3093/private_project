@@ -102,6 +102,8 @@ $wait  = (int)($_GET['wait'] ?? 0);
 if ($wait < 0) $wait = 0;
 if ($wait > 25) $wait = 25; // keep within safe PHP execution times
 
+$markRead = (int)($_GET['mark'] ?? 0); // only mark messages read when chat view explicitly requests it
+
 if ($peerCode === '') j(['ok' => false, 'error' => 'Missing peer']);
 if (!preg_match('/^[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $peerCode)) {
     j(['ok' => false, 'error' => 'Friend code required']);
@@ -144,7 +146,7 @@ try {
     do {
         // Pull new rows since last id
         $q = $dbh->prepare("
-            SELECT id, sender, receiver, feedbackdata, created_at, is_read
+            SELECT id, sender, receiver, feedbackdata, attachment, created_at, is_read
             FROM feedback
             WHERE channel = 'user_user'
               AND id > :after
@@ -185,6 +187,7 @@ try {
                     'sender_name' => $isMe ? (($meName !== '') ? $meName : 'You') : $peerDisplay,
                     'peer_name' => $peerDisplay,
                     'text' => (string)($r['feedbackdata'] ?? ''),
+                    'attachment' => (string)($r['attachment'] ?? ''),
                     'created_at' => $created,
                     'time_label' => $ts ? date('M d, Y h:i A', $ts) : '',
                     'is_read' => (int)($r['is_read'] ?? 0),
@@ -197,23 +200,27 @@ try {
         usleep(250000); // 250ms
     } while (microtime(true) < $deadline);
 
+    if ($markRead === 1) {
     // Mark peer->me as read (legacy supports receiver stored as email)
-    $mk = $dbh->prepare("
-        UPDATE feedback
-        SET is_read = 1, read_at = NOW()
-        WHERE channel = 'user_user'
-          AND receiver IN (:meCode, :meEmail)
-          AND sender   IN (:peerCode, :peerEmail)
-          AND is_read = 0
-    ");
-    $mk->execute([
-        ':meCode'    => $meCode,
-        ':meEmail'   => $meEmail,
-        ':peerCode'  => $peerCode,
-        ':peerEmail' => $peerEmail,
-    ]);
+        $mk = $dbh->prepare("
+            UPDATE feedback
+            SET is_read = 1, read_at = NOW()
+            WHERE channel = 'user_user'
+              AND receiver IN (:meCode, :meEmail)
+              AND sender   IN (:peerCode, :peerEmail)
+              AND is_read = 0
+        ");
+        $mk->execute([
+            ':meCode'    => $meCode,
+            ':meEmail'   => $meEmail,
+            ':peerCode'  => $peerCode,
+            ':peerEmail' => $peerEmail,
+        ]);
+    
+        
+}
 
-    j(['ok' => true, 'items' => $items, 'last_id' => $lastId, 'peer_display' => $peerDisplay]);
+j(['ok' => true, 'items' => $items, 'last_id' => $lastId, 'peer_display' => $peerDisplay]);
 } catch (Throwable $e) {
     j(['ok' => false, 'error' => 'Server error']);
 }

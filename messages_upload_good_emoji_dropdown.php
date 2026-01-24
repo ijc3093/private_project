@@ -313,23 +313,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $peerRow && $peerCode !== '') {
         $tmp  = (string)($_FILES['attachment']['tmp_name'] ?? '');
         $name = basename((string)($_FILES['attachment']['name'] ?? ''));
         if ($tmp && is_uploaded_file($tmp)) {
-            $origSafe = preg_replace('/[^a-zA-Z0-9._-]/', '_', $name);
-            $ext = strtolower(pathinfo($origSafe, PATHINFO_EXTENSION));
-
-            // Allow common attachment types. Adjust as needed.
-            $allowed = ['jpg','jpeg','png','gif','webp','mp4','mov','webm','pdf','doc','docx','txt'];
-            if ($ext && in_array($ext, $allowed, true)) {
-                $dir = __DIR__ . '/attachment';
-                if (!is_dir($dir)) @mkdir($dir, 0755, true);
-
-                // Unique filename prevents overwrite
-                $safe = 'msg_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-                $path = $dir . '/' . $safe;
-
-                if (move_uploaded_file($tmp, $path)) {
-                    $attachmentName = $safe;
-                }
-            }
+            $safe = preg_replace('/[^a-zA-Z0-9._-]/', '_', $name);
+            $dir = __DIR__ . '/attachment';
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $path = $dir . '/' . $safe;
+            if (move_uploaded_file($tmp, $path)) $attachmentName = $safe;
         }
     }
 
@@ -375,18 +363,6 @@ if ($peerRow && $peerCode !== '') {
         mark.chatMark{padding:0 2px; border-radius:3px;}
         #noChatsMatch{display:none;}
     </style>
-
-<style>
-/* Safety: never clip popups */
-#chatContainer,
-#messages,
-#composer,
-.chat-container,
-.message-container {
-  overflow: visible !important;
-}
-</style>
-
 </head>
 
 <body class="bg-white darkd">
@@ -395,7 +371,7 @@ if ($peerRow && $peerCode !== '') {
     <?php include __DIR__ . '/includes/header.php'; ?>
 
     <main id="site__main" class="2xl:ml-[--w-side] xl:ml-[--w-side-m] p-2.5 h-[calc(100vh-var(--m-top))] mt-[--m-top]">
-        <div class="relative overflow-visible overflow-visible border -m-2.5 dark:border-slate-700">
+        <div class="relative overflow-hidden border -m-2.5 dark:border-slate-700">
             <div class="flex bg-white dark:bg-dark2">
 
                 <!-- sidebar -->
@@ -404,7 +380,7 @@ if ($peerRow && $peerCode !== '') {
 
                         <!-- heading title -->
                         <div class="p-4 border-b dark:border-slate-700">
-                            <div class="flex  items-center justify-between">
+                            <div class="flex mt-2 items-center justify-between">
                                 <h2 class="text-2xl font-bold text-black ml-1 dark:text-white"> Chats </h2>
 
                                 <div class="flex items-center gap-2.5">
@@ -431,7 +407,7 @@ if ($peerRow && $peerCode !== '') {
 
                             <div class="relative mt-4">
                                 <div class="absolute left-3 bottom-1/2 translate-y-1/2 flex"><ion-icon name="search" class="text-xl"></ion-icon></div>
-                                <input id="chatSearch" type="text" placeholder="Search" class="w-full !pl-10 !py-2 !rounded-none" autocomplete="off">
+                                <input id="chatSearch" type="text" placeholder="Search" class="w-full !pl-10 !py-2 !rounded-lg" autocomplete="off">
                             </div>
                         </div>
 
@@ -450,7 +426,7 @@ if ($peerRow && $peerCode !== '') {
                                     $href = "messages.php?peer=" . urlencode($peerKey);
                                 ?>
                                 <a href="<?php echo h($href); ?>"
-                                   class="chatItem relative flex items-center gap-4 p-2 duration-200 rounded-none hover:bg-secondery"
+                                   class="chatItem relative flex items-center gap-4 p-2 duration-200 rounded-xl hover:bg-secondery"
                                    data-key="<?php echo h($peerKey); ?>"
                                    data-name="<?php echo h(mb_strtolower($pDisp)); ?>"
                                    data-code="<?php echo h(mb_strtolower($peerKey)); ?>"
@@ -461,8 +437,8 @@ if ($peerRow && $peerCode !== '') {
                                    data-orig-lastmsg="<?php echo h($lastMsg); ?>">
 
                                     <div class="relative w-14 h-14 shrink-0">
-                                        <img src="assets/images/avatars/avatar-5.jpg" alt="" class="object-cover w-full h-full rounded-none">
-                                        <span class="peerOnlineDot inline-block w-2.5 h-2.5 rounded-none <?= $oi['online'] ? 'bg-green-500' : 'bg-gray-400'; ?>"
+                                        <img src="assets/images/avatars/avatar-5.jpg" alt="" class="object-cover w-full h-full rounded-full">
+                                        <span class="peerOnlineDot inline-block w-2.5 h-2.5 rounded-full <?= $oi['online'] ? 'bg-green-500' : 'bg-gray-400'; ?>"
                                         title="<?= h($oi['label']); ?>"></span>
                                     </div>
 
@@ -479,7 +455,7 @@ if ($peerRow && $peerCode !== '') {
 	                                                <div class="flex items-center gap-2 text-xs text-gray-500">
 	                                                    <span class="chatCode"><?php echo h($peerKey); ?></span>
 	                                                    <?php if ($isUnknown === 1): ?>
-	                                                        <span class="chatUnknown px-2 py-0.5 rounded-none bg-gray-200 text-gray-700">Unknown</span>
+	                                                        <span class="chatUnknown px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">Unknown</span>
 	                                                    <?php endif; ?>
 	                                                </div>
                                             </div>
@@ -489,11 +465,11 @@ if ($peerRow && $peerCode !== '') {
                                             </div>
 
                                             <?php if ($unread > 0): ?>
-                                                <div class="unreadDot w-2.5 h-2.5 bg-blue-600 rounded-none dark:bg-slate-700"></div>
+                                                <div class="unreadDot w-2.5 h-2.5 bg-blue-600 rounded-full dark:bg-slate-700"></div>
                                             <?php endif; ?>
                                         </div>
 
-                                        <div class="font-medium overflow-visible text-ellipsis text-sm whitespace-nowrap">
+                                        <div class="font-medium overflow-hidden text-ellipsis text-sm whitespace-nowrap">
                                             <span class="chatLastMsg"><?php echo h($lastMsg); ?></span>
                                         </div>
                                     </div>
@@ -516,8 +492,8 @@ if ($peerRow && $peerCode !== '') {
                                 </button>
 
                                 <div class="relative cursor-pointer max-md:hidden" uk-toggle="target: .rightt ; cls: hidden">
-                                    <img src="assets/images/avatars/avatar-6.jpg" alt="" class="w-8 h-8 rounded-none shadow">
-                                    <div class="w-2 h-2 bg-teal-500 rounded-none absolute right-0 bottom-0 m-px"></div>
+                                    <img src="assets/images/avatars/avatar-6.jpg" alt="" class="w-8 h-8 rounded-full shadow">
+                                    <div class="w-2 h-2 bg-teal-500 rounded-full absolute right-0 bottom-0 m-px"></div>
                                 </div>
 
                                     <div class="cursor-pointer" uk-toggle="target: .rightt ; cls: hidden">
@@ -530,18 +506,18 @@ if ($peerRow && $peerCode !== '') {
                                             <div id="typingIndicator" class="hidden text-xs text-green-500 leading-tight mt-0.5"></div>
                                                 <?php if ($peerRow && $peerCode !== ''): ?>
                                                 <!-- ✍️ Rename inside messages (permanent SQL, user-only) -->
-                                                <button id="btnRenamePeer" type="button" class="p-1 rounded-none hover:bg-secondery" title="Rename contact">
+                                                <button id="btnRenamePeer" type="button" class="p-1 rounded-full hover:bg-secondery" title="Rename contact">
                                                     <ion-icon name="create-outline" class="text-xl"></ion-icon>
                                                 </button>
                                                 <?php endif; ?>
                                             </div>
 
                                             <?php if ($peerRow && $peerCode !== ''): ?>
-                                                <div id="renamePeerBox" class="" style="display:none;" onclick="event.stopPropagation();">
+                                                <div id="renamePeerBox" class="mt-2" style="display:none;" onclick="event.stopPropagation();">
                                                     <div class="flex items-center gap-2">
-                                                        <input id="renamePeerInput" type="text" class="w-60 !py-2 !rounded-none" placeholder="Enter a name..." value="<?php echo h($peerDisplay); ?>">
-                                                        <button id="btnRenameSave" type="button" class="px-3 py-2 rounded-none bg-secondery">Save</button>
-                                                        <button id="btnRenameCancel" type="button" class="px-3 py-2 rounded-none bg-secondery">Cancel</button>
+                                                        <input id="renamePeerInput" type="text" class="w-60 !py-2 !rounded-lg" placeholder="Enter a name..." value="<?php echo h($peerDisplay); ?>">
+                                                        <button id="btnRenameSave" type="button" class="px-3 py-2 rounded-lg bg-secondery">Save</button>
+                                                        <button id="btnRenameCancel" type="button" class="px-3 py-2 rounded-lg bg-secondery">Cancel</button>
                                                     </div>
                                                     <div class="text-xs text-gray-500 mt-1">Renames are saved to your contacts and will update the sidebar.</div>
                                                 </div>
@@ -557,7 +533,7 @@ if ($peerRow && $peerCode !== '') {
 
                         <div class="flex items-center gap-2">
 
-                            <a href="add_contact.php?friend=<?php echo urlencode($peerCode); ?>&return=messages" type="button" class="sm:p-2 p-1 rounded-none relative sm:bg-secondery dark:text-white">
+                            <a href="add_contact.php?friend=<?php echo urlencode($peerCode); ?>&return=messages" type="button" class="sm:p-2 p-1 rounded-full relative sm:bg-secondery dark:text-white">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 max-sm:hidden">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"></path>
                                     </svg>
@@ -570,13 +546,13 @@ if ($peerRow && $peerCode !== '') {
                                 </svg>
                             </button>
 
-                            <button type="button" class="hover:bg-slate-100 p-1.5 rounded-none">
+                            <button type="button" class="hover:bg-slate-100 p-1.5 rounded-full">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                                     <path stroke-linecap="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
                                 </svg>
                             </button>
 
-                            <button type="button" class="hover:bg-slate-100 p-1.5 rounded-none" uk-toggle="target: .rightt ; cls: hidden">
+                            <button type="button" class="hover:bg-slate-100 p-1.5 rounded-full" uk-toggle="target: .rightt ; cls: hidden">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
                                 </svg>
@@ -620,36 +596,9 @@ if ($peerRow && $peerCode !== '') {
 
                                 <?php if (!$isMe): ?>
                                     <div class="flex gap-3 msgRow" data-id="<?php echo (int)$id; ?>" data-day="<?php echo h($dk); ?>">
-                                        <img src="assets/images/avatars/avatar-2.jpg" alt="" class="w-9 h-9 rounded-none shadow">
+                                        <img src="assets/images/avatars/avatar-2.jpg" alt="" class="w-9 h-9 rounded-full shadow">
                                         <div>
                                             <div class="px-4 py-2 rounded-[20px] max-w-sm bg-secondery">
-                                                <?php
-                                                    // ✅ FIX: render attachment ONLY ONCE (no duplicate block)
-                                                    $att = (string)($m['attachment'] ?? '');
-                                                    $attBase = $att ? basename($att) : '';
-                                                    $attUrl = $attBase ? ('attachment/' . rawurlencode($attBase)) : '';
-                                                    $attExt = strtolower(pathinfo($attBase, PATHINFO_EXTENSION));
-                                                ?>
-                                                <?php if ($attUrl): ?>
-                                                    <?php if (in_array($attExt, ['jpg','jpeg','png','gif','webp'], true)): ?>
-                                                        <div class="mb-2">
-                                                            <img src="<?php echo h($attUrl); ?>" alt="attachment" class="max-w-[240px] max-h-[240px] object-cover rounded-none border border-black/10">
-                                                        </div>
-                                                    <?php elseif (in_array($attExt, ['mp4','mov','webm'], true)): ?>
-                                                        <div class="mb-2">
-                                                            <video controls class="max-w-[240px] max-h-[240px] rounded-none border border-black/10">
-                                                                <source src="<?php echo h($attUrl); ?>">
-                                                            </video>
-                                                        </div>
-                                                    <?php else: ?>
-                                                        <div class="mb-2">
-                                                            <a class="underline text-sm text-blue-600" href="<?php echo h($attUrl); ?>" target="_blank" rel="noopener">
-                                                                📎 <?php echo h($attBase); ?>
-                                                            </a>
-                                                        </div>
-                                                    <?php endif; ?>
-                                                <?php endif; ?>
-
                                                 <?php echo nl2br(h((string)($m['feedbackdata'] ?? ''))); ?>
                                             </div>
                                             <div class="mt-1 text-xs text-gray-500">
@@ -659,36 +608,9 @@ if ($peerRow && $peerCode !== '') {
                                     </div>
                                 <?php else: ?>
                                     <div class="flex gap-2 flex-row-reverse items-end msgRow" data-id="<?php echo (int)$id; ?>" data-day="<?php echo h($dk); ?>">
-                                        <img src="assets/images/avatars/avatar-3.jpg" alt="" class="w-5 h-5 rounded-none shadow">
+                                        <img src="assets/images/avatars/avatar-3.jpg" alt="" class="w-5 h-5 rounded-full shadow">
                                         <div class="text-right">
                                             <div class="px-4 py-2 rounded-[20px] max-w-sm bg-gradient-to-tr from-sky-500 to-blue-500 text-white shadow">
-                                                <?php
-                                                    // ✅ keep sender attachment on refresh too (safe; no HTML/CSS changes)
-                                                    $att = (string)($m['attachment'] ?? '');
-                                                    $attBase = $att ? basename($att) : '';
-                                                    $attUrl = $attBase ? ('attachment/' . rawurlencode($attBase)) : '';
-                                                    $attExt = strtolower(pathinfo($attBase, PATHINFO_EXTENSION));
-                                                ?>
-                                                <?php if ($attUrl): ?>
-                                                    <?php if (in_array($attExt, ['jpg','jpeg','png','gif','webp'], true)): ?>
-                                                        <div class="mb-2">
-                                                            <img src="<?php echo h($attUrl); ?>" alt="attachment" class="max-w-[240px] max-h-[240px] object-cover rounded-none border border-black/10">
-                                                        </div>
-                                                    <?php elseif (in_array($attExt, ['mp4','mov','webm'], true)): ?>
-                                                        <div class="mb-2">
-                                                            <video controls class="max-w-[240px] max-h-[240px] rounded-none border border-black/10">
-                                                                <source src="<?php echo h($attUrl); ?>">
-                                                            </video>
-                                                        </div>
-                                                    <?php else: ?>
-                                                        <div class="mb-2">
-                                                            <a class="underline text-sm text-white" href="<?php echo h($attUrl); ?>" target="_blank" rel="noopener">
-                                                                📎 <?php echo h($attBase); ?>
-                                                            </a>
-                                                        </div>
-                                                    <?php endif; ?>
-                                                <?php endif; ?>
-
                                                 <?php echo nl2br(h((string)($m['feedbackdata'] ?? ''))); ?>
                                             </div>
                                             <div class="mt-1 text-xs text-gray-400">
@@ -704,39 +626,31 @@ if ($peerRow && $peerCode !== '') {
                         <?php endif; ?>
                     </div>
                     <?php if ($peerRow): ?>
-                    <div class="flex items-center flex-nowrap gap-2 md:gap-3 p-2 w-full overflow-visible rounded-none">
-                    <!-- Attachment + Emoji toolbar -->
-                                    <div class="flex items-center flex-nowrap gap-2 shrink-0">
+                    <div class="flex items-center md:gap-4 gap-2 md:p-3 p-2 overflow-hidden">
+<!-- Attachment + Emoji toolbar -->
+                                    <div class="flex items-center gap-2 mb-2">
                                         <div class="relative">
                                             <button type="button" id="msgBtnPlus"
-                                                    class="w-10 h-10 rounded-none bg-secondery flex items-center justify-center text-xl">+</button>
+                                                    class="w-10 h-10 rounded-full bg-secondery flex items-center justify-center text-xl">+</button>
 
                                             <!-- 4-circle menu -->
-                                            <div id="msgPlusMenu" class="hidden fixed z-20  p-2 bg-white border border-gray-200 rounded-none shadow flex gap-2 z-[9999]">
-                                                <button type="button" class="w-12 h-12 rounded-none border bg-gray-50"
+                                            <div id="msgPlusMenu"
+                                                 class="hidden absolute z-20 mt-2 p-2 bg-white border border-gray-200 rounded-2xl shadow flex gap-2">
+                                                <button type="button" class="w-12 h-12 rounded-full border bg-gray-50"
                                                         data-pick="image" title="Image">🖼</button>
-                                                <button type="button" class="w-12 h-12 rounded-none border bg-gray-50"
+                                                <button type="button" class="w-12 h-12 rounded-full border bg-gray-50"
                                                         data-pick="video" title="Video">🎥</button>
-                                                <button type="button" class="w-12 h-12 rounded-none border bg-gray-50"
+                                                <button type="button" class="w-12 h-12 rounded-full border bg-gray-50"
                                                         data-pick="doc" title="Document">📄</button>
-                                                <button type="button" class="w-12 h-12 rounded-none border bg-gray-50"
+                                                <button type="button" class="w-12 h-12 rounded-full border bg-gray-50"
                                                         data-pick="gif" title="GIF">🎞</button>
                                             </div>
                                         </div>
 
                                         <button type="button" id="msgBtnEmoji"
-                                                class="w-10 h-10 rounded-none bg-secondery flex items-center justify-center text-xl"
+                                                class="w-10 h-10 rounded-full bg-secondery flex items-center justify-center text-xl"
                                                 title="Emoji">😊
                                         </button>
-
-                                        <!-- Inline attachment preview: [ image ✕ ] -->
-                                        <div id="msgPreviewInline" class="hidden shrink-0 flex items-center gap-2 px-2 py-1 border border-gray-300 rounded-none bg-white">
-                                            <img id="msgPreviewImg" class="hidden w-10 h-10 object-cover rounded-none" alt="preview">
-                                            <span id="msgPreviewIcon" class="hidden text-xl">📄</span>
-                                            <span id="msgPreviewName" class="max-w-[140px] truncate text-xs"></span>
-                                            <button type="button" id="msgPreviewRemove" class="shrink-0 w-7 h-7 flex items-center justify-center border border-gray-300 rounded-none">✕</button>
-                                        </div>
-
 
                                         <input type="file" id="msgFileImage" name="attachment" class="hidden" accept="image/png,image/jpeg">
                                         <input type="file" id="msgFileVideo" name="attachment" class="hidden" accept="video/mp4,video/webm,video/ogg,video/quicktime">
@@ -746,35 +660,30 @@ if ($peerRow && $peerCode !== '') {
 
                                     <!-- Optional: document link/url (instead of upload) -->
                                     <input type="text" id="msgAttachmentUrl" name="attachment_url"
-                                           class="hidden w-full hidden bg-secondery rounded-none px-4 p-2 "
+                                           class="hidden w-full bg-secondery rounded-xl px-4 p-2 mb-2"
                                            placeholder="Paste document link (optional)">
 
                                     <!-- Preview box -->
-                                    <div id="msgPreviewBox" class="hidden"></div>
+                                    <div id="msgPreviewBox" class="hidden w-full bg-secondery rounded-xl p-3 mb-2"></div>
                         
 
-                        <form id="sendForm" method="POST" enctype="multipart/form-data" class="flex-1 flex items-center flex-nowrap gap-2 overflow-visible rounded-none">
+                        <div class="relative flex-1">
+                            <form id="sendForm" method="POST" enctype="multipart/form-data" class="flex items-center md:gap-4 gap-2 md:p-3 p-2 overflow-hidden">
                                 <div class="relative flex-1">
                                     
 
-                                    <div class="relative flex-1">
-  <textarea id="messageInput"
-    name="message"
-    placeholder="Write your message..."
-    rows="1"
-    class="w-full resize-none bg-secondery rounded-none px-4 py-2 pr-12"></textarea>
+                                    <textarea id="messageInput" name="message" placeholder="Write your message" rows="1"
+                                              class="w-full resize-none bg-secondery rounded-full px-4 p-2"></textarea>
 
-  <!-- Send icon INSIDE textarea -->
-  <button type="submit"
-    class="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-primary">
-    <ion-icon name="send-outline" class="text-xl"></ion-icon>
-  </button>
-</div>
+                                    <button type="submit" class="text-white shrink-0 p-2 absolute right-0.5 top-0">
+                                        <ion-icon class="text-xl flex" name="send-outline"></ion-icon>
+                                    </button>
                                 </div>
                             </form>
+                        </div>
 
-                        <button type="button" class="shrink-0 flex items-center justify-center p-2 dark:text-white rounded-none">
-                            <ion-icon class="text-3xl flex" name="heart-outline"></ion-icon>
+                        <button type="button" class="flex h-full dark:text-white">
+                            <ion-icon class="text-3xl flex -mt-3" name="heart-outline"></ion-icon>
                         </button>
                     </div>
                     <?php endif; ?>
@@ -881,30 +790,24 @@ if ($peerRow && $peerCode !== '') {
     // URL stored in attachment
     if(/^https?:\/\//i.test(s)){
       const u = escapeHtml(s);
-      return `<div class=" text-sm"><a class="underline" target="_blank" href="${u}">🔗 ${u}</a></div>`;
+      return `<div class="mt-2 text-sm"><a class="underline" target="_blank" href="${u}">🔗 ${u}</a></div>`;
     }
 
     const ext = (s.split('.').pop() || '').toLowerCase();
     const url = 'attachment/' + encodeURIComponent(s);
 
     if(['jpg','jpeg','png','gif'].includes(ext)){
-      return `<div class=""><img src="${url}" class="max-w-[220px] rounded-none" alt=""></div>`;
+      return `<div class="mt-2"><img src="${url}" class="max-w-[220px] rounded-xl" alt=""></div>`;
     }
     if(['mp4','webm','ogg','mov'].includes(ext)){
-      return `<div class=""><video class="max-w-[320px] rounded-none" controls src="${url}"></video></div>`;
+      return `<div class="mt-2"><video class="max-w-[320px] rounded-xl" controls src="${url}"></video></div>`;
     }
     const name = escapeHtml(s);
-    return `<div class=" text-sm">📄 <a class="underline" target="_blank" href="${url}">${name}</a></div>`;
+    return `<div class="mt-2 text-sm">📄 <a class="underline" target="_blank" href="${url}">${name}</a></div>`;
   }
 
 function appendMessage(item){
     if(!chatBox || !chatStream) return;
-
-    // Avoid duplicates (polling can return the same message you already appended)
-    if (item && item.id) {
-      const exists = chatStream.querySelector('.msgRow[data-id="' + String(item.id) + '"]');
-      if (exists) return;
-    }
 
     const nearBottom = isNearBottom(chatBox);
 
@@ -924,7 +827,7 @@ function appendMessage(item){
     if (item.is_me) {
       row.className += ' flex gap-2 flex-row-reverse items-end';
       row.innerHTML = `
-        <img src="assets/images/avatars/avatar-3.jpg" alt="" class="w-5 h-5 rounded-none shadow">
+        <img src="assets/images/avatars/avatar-3.jpg" alt="" class="w-5 h-5 rounded-full shadow">
         <div class="text-right">
           <div class="px-4 py-2 rounded-[20px] max-w-sm bg-gradient-to-tr from-sky-500 to-blue-500 text-white shadow"></div>
           <div class="mt-1 text-xs text-gray-400">
@@ -942,7 +845,7 @@ function appendMessage(item){
     } else {
       row.className += ' flex gap-3';
       row.innerHTML = `
-        <img src="assets/images/avatars/avatar-2.jpg" alt="" class="w-9 h-9 rounded-none shadow">
+        <img src="assets/images/avatars/avatar-2.jpg" alt="" class="w-9 h-9 rounded-full shadow">
         <div>
           <div class="px-4 py-2 rounded-[20px] max-w-sm bg-secondery"></div>
           <div class="mt-1 text-xs text-gray-500"></div>
@@ -1032,75 +935,94 @@ function appendMessage(item){
   }
 
   function hidePreview(){
-    const box = document.getElementById('msgPreviewInline');
-    if(box){
-      if(box.__objUrl){
-        try{ URL.revokeObjectURL(box.__objUrl); }catch(_){}
-        box.__objUrl = null;
-      }
-      box.classList.add('hidden');
-      const img = document.getElementById('msgPreviewImg');
-      const icon = document.getElementById('msgPreviewIcon');
-      const name = document.getElementById('msgPreviewName');
-      if(img){ img.src=''; img.classList.add('hidden'); }
-      if(icon){ icon.classList.add('hidden'); }
-      if(name){ name.textContent=''; }
-    }
-    const pb = document.getElementById('msgPreviewBox');
-    if(pb){ pb.classList.add('hidden'); pb.innerHTML=''; }
+    if(!previewBox) return;
+    previewBox.innerHTML='';
+    previewBox.classList.add('hidden');
   }
 
   function showPreview(file){
-    const box = document.getElementById('msgPreviewInline');
-    const img = document.getElementById('msgPreviewImg');
-    const icon = document.getElementById('msgPreviewIcon');
-    const name = document.getElementById('msgPreviewName');
-    const rm = document.getElementById('msgPreviewRemove');
+    if(!previewBox) return;
+    previewBox.innerHTML='';
+    previewBox.classList.remove('hidden');
 
-    if(!box || !name || !rm) return;
+    const name = file.name || 'attachment';
+    const ext = (name.split('.').pop() || '').toLowerCase();
 
-    if(box.__objUrl){
-      try{ URL.revokeObjectURL(box.__objUrl); }catch(_){}
-      box.__objUrl = null;
+    // image/gif
+    if(file.type.startsWith('image/')){
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.className = 'max-w-[220px] rounded-xl';
+      previewBox.appendChild(img);
+      const cap = document.createElement('div');
+      cap.className='mt-2 text-sm';
+      cap.textContent = name;
+      previewBox.appendChild(cap);
+      return;
     }
 
-    name.textContent = file?.name ? String(file.name) : 'attachment';
-
-    if(img){ img.classList.add('hidden'); img.src=''; }
-    if(icon){ icon.classList.add('hidden'); icon.textContent='📄'; }
-
-    const type = file?.type ? String(file.type) : '';
-    if(type.startsWith('image/')){
-      const url = URL.createObjectURL(file);
-      box.__objUrl = url;
-      img.src = url;
-      img.classList.remove('hidden');
-    } else if(type.startsWith('video/')){
-      icon.textContent='🎥'; icon.classList.remove('hidden');
-    } else if(type.startsWith('audio/')){
-      icon.textContent='🎵'; icon.classList.remove('hidden');
-    } else {
-      icon.textContent='📄'; icon.classList.remove('hidden');
+    // video
+    if(file.type.startsWith('video/')){
+      const v = document.createElement('video');
+      v.controls = true;
+      v.src = URL.createObjectURL(file);
+      v.className = 'max-w-[320px] rounded-xl';
+      previewBox.appendChild(v);
+      const cap = document.createElement('div');
+      cap.className='mt-2 text-sm';
+      cap.textContent = name;
+      previewBox.appendChild(cap);
+      return;
     }
 
-    box.classList.remove('hidden');
-
-    rm.onclick = () => {
-      hidePreview();
-      clearFiles();
-      const u = document.getElementById('msgAttachmentUrl');
-      if(u) u.value = '';
-      const input = document.getElementById('messageInput');
-      if(input) input.focus();
-    };
-
-    const input = document.getElementById('messageInput');
-    if(input) input.focus();
+    // documents
+    previewBox.innerHTML = `<div class="text-sm">📄 ${name}</div>`;
   }
 
   function toggleMenu(){
     if(!plusMenu) return;
-    plusMenu.classList.toggle('hidden');
+
+    const willOpen = plusMenu.classList.contains('hidden');
+    if(willOpen){
+      // ✅ Move to body + use fixed positioning so it can open UP (not clipped by bottom bar)
+      if(!plusMenu.__movedToBody){
+        document.body.appendChild(plusMenu);
+        plusMenu.__movedToBody = true;
+        // swap absolute dropdown classes to fixed
+        plusMenu.classList.remove('absolute','mt-2');
+        plusMenu.classList.add('fixed','z-[9999]');
+      }
+
+      // show first so we can measure height
+      plusMenu.classList.remove('hidden');
+
+      const r = btnPlus.getBoundingClientRect();
+      const menuW = plusMenu.offsetWidth || 220;
+      // align near the + button
+      let left = Math.round(r.left);
+      // keep within viewport
+      left = Math.min(Math.max(8, left), window.innerWidth - menuW - 8);
+
+      // open upward above + button
+      let top = Math.round(r.top - plusMenu.offsetHeight - 8);
+      // fallback: if not enough space, open downward
+      if(top < 8) top = Math.round(r.bottom + 8);
+
+      plusMenu.style.left = left + 'px';
+      plusMenu.style.top  = top + 'px';
+
+      // re-position next frame (after layout)
+      requestAnimationFrame(() => {
+        const menuW2 = plusMenu.offsetWidth || menuW;
+        let left2 = Math.min(Math.max(8, Math.round(r.left)), window.innerWidth - menuW2 - 8);
+        let top2  = Math.round(r.top - plusMenu.offsetHeight - 8);
+        if(top2 < 8) top2 = Math.round(r.bottom + 8);
+        plusMenu.style.left = left2 + 'px';
+        plusMenu.style.top  = top2 + 'px';
+      });
+    } else {
+      plusMenu.classList.add('hidden');
+    }
   }
 
   if(btnPlus && plusMenu){
@@ -1108,8 +1030,22 @@ function appendMessage(item){
       e.preventDefault();
       toggleMenu();
     });
-    document.addEventListener('click', (e) => {
-      if(e.target === btnPlus) return;
+
+    // Keep menu anchored to + button on resize/scroll
+    const repositionPlusMenu = () => {
+      if(!plusMenu || plusMenu.classList.contains('hidden')) return;
+      const r = btnPlus.getBoundingClientRect();
+      const menuW = plusMenu.offsetWidth || 220;
+      let left = Math.min(Math.max(8, Math.round(r.left)), window.innerWidth - menuW - 8);
+      let top  = Math.round(r.top - plusMenu.offsetHeight - 8);
+      if(top < 8) top = Math.round(r.bottom + 8);
+      plusMenu.style.left = left + 'px';
+      plusMenu.style.top  = top + 'px';
+    };
+    window.addEventListener('resize', repositionPlusMenu);
+    window.addEventListener('scroll', repositionPlusMenu, true);
+document.addEventListener('click', (e) => {
+      if(btnPlus.contains(e.target)) return;
       if(plusMenu.contains(e.target)) return;
       plusMenu.classList.add('hidden');
     });
@@ -1149,7 +1085,7 @@ function appendMessage(item){
   // ✅ Emoji dropdown (no alert/prompt)
   const emojiMenu = document.createElement('div');
   emojiMenu.id = 'emojiMenu';
-  emojiMenu.className = 'hidden fixed z-[9999] w-[520px] max-w-[92vw] rounded-none overflow-visible border border-slate-700 shadow-2xl';
+  emojiMenu.className = 'hidden fixed z-[9999] w-[520px] max-w-[92vw] rounded-2xl overflow-hidden border border-slate-700 shadow-2xl';
 
   const emojiHeader = document.createElement('div');
   emojiHeader.className = 'bg-slate-700 text-white px-6 py-4 text-3xl font-extrabold';
@@ -1174,17 +1110,21 @@ function appendMessage(item){
     "🤝","👀","💬","📌","🚀","🤔","😴","🙌"
   ];
 
-  emojiGrid.innerHTML = emojiList.map(em => (
-    `<button type="button" class="w-12 h-12 rounded-none hover:bg-slate-100 text-4xl flex items-center justify-center transition-transform duration-150 hover:scale-105">${em}</button>`
-  )).join('');
-
-  emojiGrid.querySelectorAll('button').forEach((b) => {
-    b.addEventListener('click', () => {
-      input.value = (input.value || '') + b.textContent;
-      input.focus();
-      emojiMenu.classList.add('hidden');
-    });
-  });
+  function buildEmojiGrid(){
+    emojiGrid.innerHTML = '';
+    for(const em of emojiList){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'w-12 h-12 rounded-2xl hover:bg-slate-100 text-4xl flex items-center justify-center transition-transform duration-150 hover:scale-105';
+      b.textContent = em;
+      b.addEventListener('click', () => {
+        input.value = (input.value || '') + em;
+        input.focus();
+        emojiMenu.classList.add('hidden');
+      });
+      emojiGrid.appendChild(b);
+    }
+  }
 
   function positionEmojiMenu(){
     const r = btnEmoji.getBoundingClientRect();
@@ -1192,15 +1132,16 @@ function appendMessage(item){
     let left = Math.round(r.right - menuW);
     if(left < 8) left = 8;
 
+    // show to measure height
     let top = Math.round(r.top - emojiMenu.offsetHeight - 8);
     if(top < 8) top = Math.round(r.bottom + 8);
 
+    // move closer to button a bit
     emojiMenu.style.left = (left + 4) + 'px';
     emojiMenu.style.top  = (top + 2) + 'px';
   }
 
-  btnEmoji.addEventListener('click', (e) => {
-    e.preventDefault();
+  function toggleEmojiMenu(){
     const willOpen = emojiMenu.classList.contains('hidden');
     if(willOpen){
       emojiMenu.classList.remove('hidden');
@@ -1209,12 +1150,19 @@ function appendMessage(item){
     } else {
       emojiMenu.classList.add('hidden');
     }
+  }
+
+  buildEmojiGrid();
+
+  btnEmoji.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleEmojiMenu();
   });
 
   document.addEventListener('click', (e) => {
     if(emojiMenu.classList.contains('hidden')) return;
-    if(emojiMenu.contains(e.target) || btnEmoji.contains(e.target)) return;
-    emojiMenu.classList.add('hidden');
+    const inside = emojiMenu.contains(e.target) || btnEmoji.contains(e.target);
+    if(!inside) emojiMenu.classList.add('hidden');
   });
 
   document.addEventListener('keydown', (e) => {
@@ -1569,24 +1517,24 @@ function appendMessage(item){
   }
 
   async function pollPresenceAll(){
-        try{
-          const peers = getSidebarPeerCodes();
-          if(!peers.length) return;
+    try{
+      const peers = getSidebarPeerCodes();
+      if(!peers.length) return;
 
-          const res = await fetch('ajax/user_presence_batch.php', {
-            method:'POST',
-            headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            cache:'no-store',
-            body:new URLSearchParams({peers: JSON.stringify(peers)})
-          });
-          const data = await res.json();
-          if(!data || !data.ok || !data.data) return;
+      const res = await fetch('ajax/user_presence_batch.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        cache:'no-store',
+        body:new URLSearchParams({peers: JSON.stringify(peers)})
+      });
+      const data = await res.json();
+      if(!data || !data.ok || !data.data) return;
 
-          for(const code of Object.keys(data.data)){
-            applyPresenceToItem(code, data.data[code]);
-          }
-          // (Disabled) Do not override header presence from batch to avoid flicker.
-    }catch(e){}
+      for(const code of Object.keys(data.data)){
+        applyPresenceToItem(code, data.data[code]);
+      }
+      // (Disabled) Do not override header presence from batch to avoid flicker.
+}catch(e){}
   }
 
   // -----------------------
@@ -1634,7 +1582,7 @@ function appendMessage(item){
         if(unread > 0){
           if(!existingDot){
             const dot = document.createElement('div');
-            dot.className = 'unreadDot w-2.5 h-2.5 bg-blue-600 rounded-none dark:bg-slate-700';
+            dot.className = 'unreadDot w-2.5 h-2.5 bg-blue-600 rounded-full dark:bg-slate-700';
             const timeWrap = a.querySelector('.text-xs.font-light.text-gray-500.dark\:text-white\/70');
             if(timeWrap && timeWrap.parentElement) timeWrap.parentElement.appendChild(dot);
             else a.querySelector('.flex.items-center.gap-2.mb-1\.5')?.appendChild(dot);
@@ -1676,70 +1624,6 @@ function appendMessage(item){
     stop = true;
     try{ sendTyping(false); }catch(e){}
   });
-})();
-</script>
-
-
-<script>
-// Position Upload + menu using TOP (like emoji) — and prevent immediate close by other handlers
-(function(){
-  const plusBtn = document.getElementById('msgBtnPlus');
-  const plusMenu = document.getElementById('msgPlusMenu');
-  if(!plusBtn || !plusMenu) return;
-
-  // Stop clicks from closing immediately (but don't block button handlers)
-  plusBtn.addEventListener('click', (e) => { e.stopPropagation(); }, true);
-  // IMPORTANT: use bubble phase here so inner menu button handlers still run
-  plusMenu.addEventListener('click', (e) => { e.stopPropagation(); });
-
-  function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
-
-  function positionPlusMenu(){
-    const r = plusBtn.getBoundingClientRect();
-
-    // Ensure menu is measurable
-    const menuW = plusMenu.offsetWidth || 220;
-    const menuH = plusMenu.offsetHeight || 60;
-
-    const margin = 8;
-    let left = r.left;
-    left = clamp(left, margin, window.innerWidth - menuW - margin);
-
-    // place ABOVE button (top-based), but if not enough room, place below
-    let top = r.top - menuH - 8;
-    if(top < margin) top = r.bottom + 8;
-
-    plusMenu.style.left = Math.round(left) + "px";
-    plusMenu.style.top  = Math.round(top) + "px";
-  }
-
-  function openMenu(){
-    plusMenu.classList.remove("hidden");
-    positionPlusMenu();
-    requestAnimationFrame(positionPlusMenu);
-  }
-  function closeMenu(){
-    plusMenu.classList.add("hidden");
-  }
-
-  // Main toggle (capture prevents other handlers running first)
-  plusBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const willOpen = plusMenu.classList.contains("hidden");
-    if(willOpen) openMenu();
-    else closeMenu();
-  }, true);
-
-  // Close on outside click
-  document.addEventListener("click", (e) => {
-    if(plusMenu.classList.contains("hidden")) return;
-    if(plusMenu.contains(e.target) || plusBtn.contains(e.target)) return;
-    closeMenu();
-  });
-
-  window.addEventListener("resize", () => { if(!plusMenu.classList.contains("hidden")) positionPlusMenu(); });
-  window.addEventListener("scroll",  () => { if(!plusMenu.classList.contains("hidden")) positionPlusMenu(); }, true);
 })();
 </script>
 

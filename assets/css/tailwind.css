@@ -4625,7 +4625,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .bg-white {
-  --tw-bg-opacity: 1;rgb(29 41 59)
+  --tw-bg-opacity:
   background-color: rgb(29 41 59 / var(--tw-bg-opacity));
 }
 
@@ -5285,6 +5285,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .pr-2 {
   padding-right: 0.5rem;
+  background-color: white;
 }
 
 .pr-2\.5 {
@@ -5357,6 +5358,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .text-center {
   text-align: center;
+  background-color: white;
 }
 
 .text-right {
@@ -7523,8 +7525,8 @@ h1, h2, h3, h4, h5, h6 {
     height: 180px;
   }
 
-  .md\:h-\[calc\(100vh-204px\)\] {
-    height: calc(100vh - 204px);
+  .md\:h-\[calc\(95vh-204px\)\] {
+    height: calc(95vh - 204px);
   }
 
   .md\:h-full {

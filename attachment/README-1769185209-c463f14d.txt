@@ -1,0 +1,16 @@
+
+Business_only3 – ALL ATTACHMENTS IN DB (FINAL)
+
+This ZIP confirms:
+- Attachments are sent via FormData
+- name="attachment"
+- Stored in DB (attachment_blob)
+- No filesystem usage
+- download_attachment.php serves files
+
+If you already have the project:
+1) Replace ajax/user_chat_send.php with the fixed version
+2) Ensure JS uses FormData (not serialize)
+3) Ensure file input name="attachment"
+
+If you want the FULL regenerated project again, say "send full zip".

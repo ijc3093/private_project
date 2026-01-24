@@ -1,6 +1,6 @@
 <?php
-// /Business_only3/ajax/user_presence_batch.php
-// Purpose: Update current user's last_seen and return online/offline info for MANY peers.
+// /Business_only/ajax/user_presence_batch.php
+// Purpose: Update current user's last_seen and return online/offline info for MANY peers (WhatsApp-like)
 
 declare(strict_types=1);
 
@@ -10,25 +10,59 @@ require_once __DIR__ . '/../includes/session_user.php';
 requireUserLogin();
 
 require_once __DIR__ . '/../admin/controller.php';
+/** Convert seconds to a friendly "Last seen X ago" label. */
+function seconds_ago_label(int $sec): string {
+    if ($sec < 0) $sec = 0;
+    if ($sec < 10) return 'Last seen just now';
+    if ($sec < 60) return 'Last seen ' . $sec . 's ago';
+    $m = (int) floor($sec / 60);
+    if ($m < 60) return 'Last seen ' . $m . 'm ago';
+    $h = (int) floor($m / 60);
+    if ($h < 24) return 'Last seen ' . $h . 'h ago';
+    $d = (int) floor($h / 24);
+    if ($d < 7) return 'Last seen ' . $d . 'd ago';
+    // fallback to timestamp-like (still concise)
+    return 'Last seen ' . $d . 'd ago';
+}
 
-function online_info_local_batch(?string $lastSeen, int $thresholdSeconds = 120): array {
+
+/** Treat user as active unless status explicitly indicates inactive/disabled. */
+function is_user_active($status): bool {
+    if ($status === null) return true;
+    // numeric statuses: 1/0
+    if (is_numeric($status)) return ((int)$status) !== 0;
+    $s = strtolower(trim((string)$status));
+    if ($s === '') return true;
+    return !in_array($s, ['inactive','disabled','banned','suspended','0','false','no'], true);
+}
+
+
+
+function online_info_local_batch(?string $lastSeen, int $thresholdSeconds = 300, ?int $ageSeconds = null): array {
+    if ($ageSeconds !== null) {
+        $online = ($ageSeconds <= $thresholdSeconds);
+        return [
+            'online' => $online,
+            'label' => ($online ? 'Online' : seconds_ago_label((int)($ageSeconds ?? 999999))),
+            'last_seen_label' => (string)($lastSeen ?? ''),
+            'age_seconds' => $ageSeconds,
+        ];
+    }
+
     $lastSeen = (string)($lastSeen ?? '');
-    if ($lastSeen === '') return ['online' => false, 'label' => 'Offline'];
-    $ts = strtotime($lastSeen);
-    if (!$ts) return ['online' => false, 'label' => 'Offline'];
-    $online = (time() - $ts) <= $thresholdSeconds;
-    if ($online) return ['online' => true, 'label' => 'Online'];
+    if ($lastSeen === '') return ['online' => false, 'label' => 'Offline', 'last_seen_label' => '', 'age_seconds' => null];
 
-    $delta = time() - $ts;
-    if ($delta < 3600) {
-        $m = max(1, (int)floor($delta / 60));
-        return ['online' => false, 'label' => 'Last seen ' . $m . ' min ago'];
-    }
-    if ($delta < 86400) {
-        $h = max(1, (int)floor($delta / 3600));
-        return ['online' => false, 'label' => 'Last seen ' . $h . ' hr ago'];
-    }
-    return ['online' => false, 'label' => 'Last seen ' . date('M j, Y h:i A', $ts)];
+    $ts = strtotime($lastSeen);
+    if (!$ts) return ['online' => false, 'label' => 'Offline', 'last_seen_label' => '', 'age_seconds' => null];
+
+    $age = time() - $ts;
+    $online = ($age <= $thresholdSeconds);
+    return [
+        'online' => $online,
+        'label' => ($online ? 'Online' : seconds_ago_label((int)($ageSeconds ?? 999999))),
+        'last_seen_label' => date('M j, Y g:i A', $ts),
+        'age_seconds' => $age,
+    ];
 }
 
 try {
@@ -50,7 +84,6 @@ try {
     } else {
         $rawPeers = trim((string)$rawPeers);
         if ($rawPeers !== '') {
-            // Try JSON first
             $maybeJson = json_decode($rawPeers, true);
             if (is_array($maybeJson)) {
                 $peers = $maybeJson;
@@ -78,15 +111,13 @@ try {
         exit;
     }
 
-    // Build IN (...) placeholders
     $ph = implode(',', array_fill(0, count($peerCodes), '?'));
-    $sql = "SELECT UPPER(friend_code) AS code, last_seen, status FROM users WHERE UPPER(friend_code) IN ($ph)";
+    $sql = "SELECT UPPER(friend_code) AS code, last_seen, status, TIMESTAMPDIFF(SECOND, last_seen, NOW()) AS age_seconds FROM users WHERE UPPER(friend_code) IN ($ph)";
     $st = $dbh->prepare($sql);
     $st->execute($peerCodes);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $out = [];
-    // Default all to Offline
     foreach ($peerCodes as $c) {
         $out[$c] = ['online' => false, 'label' => 'Offline'];
     }
@@ -94,12 +125,21 @@ try {
     foreach ($rows as $r) {
         $code = strtoupper((string)($r['code'] ?? ''));
         if ($code === '') continue;
-        if ((int)($r['status'] ?? 1) !== 1) {
+
+        if (!is_user_active($r['status'] ?? null)) {
             $out[$code] = ['online' => false, 'label' => 'Offline'];
             continue;
         }
-        $out[$code] = online_info_local_batch((string)($r['last_seen'] ?? ''), 120);
-    }
+
+        $age = (int)($r['age_seconds'] ?? 999999);
+        $online = ($age <= 300);
+        $out[$code] = [
+            'online' => $online,
+            'label' => ($online ? 'Online' : seconds_ago_label((int)($ageSeconds ?? 999999))),
+            'last_seen_label' => (string)($r['last_seen'] ?? ''),
+            'age_seconds' => $age,
+        ];
+}
 
     echo json_encode(['ok' => true, 'data' => $out]);
 } catch (Throwable $e) {

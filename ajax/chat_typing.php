@@ -1,56 +1,63 @@
 <?php
-// /Business_only3/ajax/chat_typing.php
+// /Business_only/ajax/chat_typing.php
+// Purpose: set typing state for (me -> peer). Used by messages.php
+
 declare(strict_types=1);
 
-error_reporting(0);
+header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../includes/session_user.php';
 requireUserLogin();
 
 require_once __DIR__ . '/../admin/controller.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Pragma: no-cache');
-
-function j($arr) { echo json_encode($arr); exit; }
-
-$meCode = strtoupper(trim((string)userFriendCode()));
-if ($meCode === '') j(['ok'=>false,'error'=>'Missing my friend code']);
-
-$peer = strtoupper(trim((string)($_POST['peer'] ?? $_GET['peer'] ?? '')));
-if ($peer === '') j(['ok'=>false,'error'=>'Missing peer']);
-
-if (!preg_match('/^[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i', $peer)) {
-    j(['ok'=>false,'error'=>'Friend code required']);
+function ensure_chat_typing_table(PDO $dbh): void {
+    // Lightweight safety: create table if missing (runs fast once; harmless afterwards)
+    $dbh->exec("
+        CREATE TABLE IF NOT EXISTS chat_typing (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            sender VARCHAR(80) NOT NULL,
+            receiver VARCHAR(80) NOT NULL,
+            is_typing TINYINT(1) NOT NULL DEFAULT 0,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_sender_receiver (sender, receiver),
+            KEY idx_receiver_updated (receiver, updated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
 }
-
-$typingRaw = (string)($_POST['typing'] ?? $_GET['typing'] ?? '1');
-$typing = ($typingRaw === '1' || strtolower($typingRaw) === 'true') ? 1 : 0;
 
 try {
     $controller = new Controller();
     $dbh = $controller->pdo();
 
-    // validate peer exists
-    $st = $dbh->prepare("SELECT friend_code FROM users WHERE UPPER(friend_code)=:c AND status=1 LIMIT 1");
-    $st->execute([':c'=>$peer]);
-    if (!$st->fetchColumn()) j(['ok'=>false,'error'=>'Peer not found']);
+    ensure_chat_typing_table($dbh);
 
-    // chat_typing schema expectation:
-    // sender_code, receiver_code, is_typing, updated_at
-    $sql = "
-        INSERT INTO chat_typing (sender_code, receiver_code, is_typing, updated_at)
+    $meCode = strtoupper(trim((string)userFriendCode()));
+    $peer = strtoupper(trim((string)($_POST['peer'] ?? '')));
+    $typing = ((string)($_POST['typing'] ?? '0')) === '1' ? 1 : 0;
+
+    if ($meCode === '' || $peer === '' || $meCode === $peer) {
+        echo json_encode(['ok' => false]);
+        exit;
+    }
+
+    // Keep my presence alive too (WhatsApp-like)
+    $meId = (int)($_SESSION['user_id'] ?? 0);
+    if ($meId > 0) {
+        $stSeen = $dbh->prepare("UPDATE users SET last_seen = NOW() WHERE id = :id LIMIT 1");
+        $stSeen->execute([':id' => $meId]);
+    }
+
+    // Upsert typing state
+    $st = $dbh->prepare("
+        INSERT INTO chat_typing (sender, receiver, is_typing, updated_at)
         VALUES (:s, :r, :t, NOW())
-        ON DUPLICATE KEY UPDATE
-            is_typing = VALUES(is_typing),
-            updated_at = NOW()
-    ";
+        ON DUPLICATE KEY UPDATE is_typing = VALUES(is_typing), updated_at = NOW()
+    ");
+    $st->execute([':s' => $meCode, ':r' => $peer, ':t' => $typing]);
 
-    $q = $dbh->prepare($sql);
-    $q->execute([':s'=>$meCode, ':r'=>$peer, ':t'=>$typing]);
-
-    j(['ok'=>true]);
+    echo json_encode(['ok' => true]);
 } catch (Throwable $e) {
-    j(['ok'=>false,'error'=>'Server error']);
+    echo json_encode(['ok' => false]);
 }

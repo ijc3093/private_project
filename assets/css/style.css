@@ -1070,6 +1070,7 @@ input:checked + .switch-button:before {
     width: 100% !important;
     max-width: 100% !important;
     height: 100dvh !important;
+    background-color: snow;
   }
 
   /* Sidebar list: dynamic viewport height so the list doesn't get cut off */
