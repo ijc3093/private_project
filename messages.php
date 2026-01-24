@@ -1157,7 +1157,7 @@ function appendMessage(item){
 
   const emojiBody = document.createElement('div');
   emojiBody.className = 'bg-white px-10 py-10 max-h-[320px] overflow-y-auto';
-
+  emojiBody.style.backgroundColor = 'silver';
   const emojiGrid = document.createElement('div');
   emojiGrid.id = 'emojiGrid';
   emojiGrid.className = 'grid grid-cols-5 gap-x-10 gap-y-8 justify-items-center';
@@ -1185,19 +1185,21 @@ function appendMessage(item){
       emojiMenu.classList.add('hidden');
     });
   });
-
+// ✅ Attach to <body> so it is NOT clipped by any parent (overflow hidden) and can scroll freely
   function positionEmojiMenu(){
     const r = btnEmoji.getBoundingClientRect();
-    const menuW = 520;
+    const menuW = 520;// modal width
+    // align right edge with button (nice in chat input)
     let left = Math.round(r.right - menuW);
     if(left < 8) left = 8;
-
+    // place above button
     let top = Math.round(r.top - emojiMenu.offsetHeight - 8);
+    // if not enough space above, fallback below
     if(top < 8) top = Math.round(r.bottom + 8);
-
-    emojiMenu.style.left = (left + 4) + 'px';
+    emojiMenu.style.left = (left + 128) + 'px';
     emojiMenu.style.top  = (top + 2) + 'px';
   }
+
 
   btnEmoji.addEventListener('click', (e) => {
     e.preventDefault();
